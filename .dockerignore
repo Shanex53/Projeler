@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/logs/
+**/.vs/
+**/*.user
+tests/
+deploy/
+tools/
+*.cmd
+**/appsettings.Development.json
+**/appsettings.Production.json
