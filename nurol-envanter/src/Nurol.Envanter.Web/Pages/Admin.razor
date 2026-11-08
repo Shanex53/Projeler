@@ -1,0 +1,148 @@
+@page "/yonetim"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+
+<PageTitle>Yönetim · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Yönetim</h1><p>Uygulama kullanıcıları, roller ve şirket/depo kapsamı. Açık kayıt ekranı yoktur; hesapları yönetici oluşturur.</p></div>
+    @if (Session.IsSystemAdmin) { <button class="btn pri" @onclick="() => Open(null)">+ Yerel hesap</button> }
+</div>
+@if (!Session.IsSystemAdmin) { <div class="note">Bu sayfa yalnızca sistem yöneticisine açıktır.</div> }
+else
+{
+    <div class="grid g2">
+        <section class="card">
+            <div class="ch"><h2>Uygulama kullanıcıları</h2></div>
+            <div class="tw">
+                <table>
+                    <thead><tr><th>Hesap</th><th>Tür</th><th>Rol</th><th>Kapsam</th><th>Son giriş</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var u in users)
+                        {
+                            <tr>
+                                <td><b class="mono">@u.UserName</b><span class="sub">@u.DisplayName</span></td>
+                                <td><span class="tag">@(u.AccountType == "Local" ? "Yerel" : "AD")</span></td>
+                                <td>@string.Join(", ", u.Roles.Select(Roles.Label)) @if (!u.IsActive) { <span class="pill p-mute">Kapalı</span> }</td>
+                                <td>@(u.Scopes.Count == 0 ? "Tüm şirketler" : string.Join(", ", u.Scopes.Select(s => s.WarehouseName ?? s.CompanyName + " (tümü)")))</td>
+                                <td class="muted num">@Fmt.DateTime(u.LastLoginAt)</td>
+                                <td><button class="btn sm" @onclick="() => Open(u)">Düzenle</button></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        <div class="stack">
+            <section class="card">
+                <div class="ch"><h2>Roller</h2></div>
+                <div class="cb">
+                    <dl class="kv">
+                        <dt>Sistem yöneticisi</dt><dd>Tüm şirketler, kullanıcılar ve tanımlar.</dd>
+                        <dt>Şirket yöneticisi</dt><dd>Atandığı şirketlerin tüm depoları; kategori ve alan tanımları.</dd>
+                        <dt>Depo sorumlusu</dt><dd>Atandığı depolarda envanter, stok ve zimmet işlemleri.</dd>
+                        <dt>Denetçi</dt><dd>Kapsamındaki kayıt ve evrakları görüntüler; değişiklik yapamaz.</dd>
+                    </dl>
+                </div>
+            </section>
+            <section class="card">
+                <div class="ch"><h2>Active Directory</h2><span class="tag">2. aşama</span></div>
+                <div class="cb"><p class="muted" style="margin:0">AD personel eşitlemesi ve kurum hesabıyla giriş 2. aşamada eklenecek. Şimdilik personeller elle kaydedilir ve yerel hesaplar kullanılır.</p></div>
+            </section>
+        </div>
+    </div>
+}
+
+@if (form is not null)
+{
+    <Modal Title="@(form.Id is null ? "Yerel hesap oluştur" : "Kullanıcıyı düzenle")" OnClose="() => form = null" Wide="true">
+        <ChildContent>
+            <form class="form two" id="uf" @onsubmit="Save">
+                <label class="fld" for="u-name">Kullanıcı adı<input id="u-name" @bind="form.UserName" disabled="@(form.Id is not null)" autocomplete="off" /></label>
+                <label class="fld" for="u-disp">Ad soyad<input id="u-disp" @bind="form.DisplayName" /></label>
+                <label class="fld" for="u-pass">@(form.Id is null ? "Parola" : "Yeni parola (değiştirmek için)")
+                    <input id="u-pass" type="password" @bind="form.Password" autocomplete="new-password" />
+                    <span class="help">En az 10 karakter; büyük harf, küçük harf ve rakam içermeli.</span>
+                </label>
+                <label class="fld" for="u-role">Rol
+                    <select id="u-role" value="@form.Role" @onchange="e => form.Role = e.Value?.ToString() ?? Roles.Auditor">
+                        @foreach (var r in Roles.All) { <option value="@r">@Roles.Label(r)</option> }
+                    </select>
+                </label>
+                @if (form.Role != Roles.SystemAdmin)
+                {
+                    <div class="fld full"><span>Kapsam @(form.Role == Roles.WarehouseManager ? "(depo seçin)" : "(şirketin tamamı veya belirli depolar)")</span>
+                        <div class="pick" style="max-height:240px">
+                            @foreach (var c in companies)
+                            {
+                                @if (form.Role != Roles.WarehouseManager)
+                                {
+                                    var key = (c.Id, (Guid?)null);
+                                    <label class="@(form.Scopes.Contains(key) ? "on" : "")"><input type="checkbox" checked="@form.Scopes.Contains(key)" @onchange="e => Toggle(key, (bool)e.Value!)" /><span><b>@c.Name</b> · tüm depolar</span><span></span></label>
+                                }
+                                @foreach (var w in warehouses.Where(w => w.CompanyId == c.Id))
+                                {
+                                    var key = (c.Id, (Guid?)w.Id);
+                                    <label class="@(form.Scopes.Contains(key) ? "on" : "")"><input type="checkbox" checked="@form.Scopes.Contains(key)" @onchange="e => Toggle(key, (bool)e.Value!)" /><span>@c.Name · @w.Name</span><span></span></label>
+                                }
+                            }
+                        </div>
+                    </div>
+                }
+                @if (form.Id is not null) { <label class="check full"><input type="checkbox" @bind="form.IsActive" /> Hesap etkin (kapatılırsa açık oturumları hemen sonlanır)</label> }
+                <div class="full"><ErrorNote Error="error" /></div>
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => form = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="uf" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    class UserForm { public string? Id, UserName, DisplayName, Password; public string Role = Roles.WarehouseManager; public bool IsActive = true; public HashSet<(Guid, Guid?)> Scopes = []; }
+
+    List<UserDto> users = [];
+    List<CompanyDto> companies = [];
+    List<WarehouseDto> warehouses = [];
+    UserForm? form;
+    ApiException? error;
+    bool busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsSystemAdmin) return;
+        await Load();
+        companies = await Api.Get<List<CompanyDto>>("api/companies");
+        warehouses = await Api.Get<List<WarehouseDto>>("api/warehouses");
+    }
+
+    async Task Load() => users = await Api.Get<List<UserDto>>("api/users");
+
+    void Open(UserDto? u)
+    {
+        error = null;
+        form = u is null ? new UserForm() : new UserForm
+        {
+            Id = u.Id, UserName = u.UserName, DisplayName = u.DisplayName, Role = u.Roles.FirstOrDefault() ?? Roles.Auditor, IsActive = u.IsActive,
+            Scopes = u.Scopes.Select(s => (s.CompanyId, s.WarehouseId)).ToHashSet()
+        };
+    }
+
+    void Toggle((Guid, Guid?) key, bool on) { if (on) form!.Scopes.Add(key); else form!.Scopes.Remove(key); }
+
+    async Task Save()
+    {
+        error = null; busy = true;
+        var scopes = form!.Role == Roles.SystemAdmin ? new List<ScopeSave>() : form.Scopes.Select(s => new ScopeSave(s.Item1, s.Item2)).ToList();
+        try
+        {
+            if (form.Id is null) await Api.Post("api/users", new UserCreate(form.UserName ?? "", form.DisplayName ?? "", form.Password ?? "", form.Role, scopes));
+            else await Api.Put($"api/users/{form.Id}", new UserUpdate(form.DisplayName ?? "", form.IsActive, form.Role, scopes, string.IsNullOrEmpty(form.Password) ? null : form.Password));
+            form = null; Toasts.Show("Kullanıcı kaydedildi"); await Load();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
   <PropertyGroup>
-    <OverrideHtmlAssetPlaceholders>true</OverrideHtmlAssetPlaceholders>
+    
     <BlazorWebAssemblyLoadAllGlobalizationData>true</BlazorWebAssemblyLoadAllGlobalizationData>
   </PropertyGroup>
   <ItemGroup>

@@ -1,0 +1,16 @@
+@if (Total > PageSize)
+{
+    <div class="pager">
+        <button class="btn sm" disabled="@(Page <= 1)" @onclick="() => Go(Page - 1)">‹ Önceki</button>
+        <span class="num">@Page / @Pages</span>
+        <button class="btn sm" disabled="@(Page >= Pages)" @onclick="() => Go(Page + 1)">Sonraki ›</button>
+    </div>
+}
+@code {
+    [Parameter] public int Page { get; set; }
+    [Parameter] public int PageSize { get; set; }
+    [Parameter] public int Total { get; set; }
+    [Parameter] public EventCallback<int> OnPage { get; set; }
+    int Pages => Math.Max(1, (int)Math.Ceiling(Total / (double)PageSize));
+    Task Go(int p) => OnPage.InvokeAsync(p);
+}

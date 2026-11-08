@@ -1,0 +1,54 @@
+@* Özel alan için tipine uygun giriş kutusu. Değer sunucuya metin olarak gider; doğrulama sunucuda yapılır. *@
+<label class="fld @(Error is not null ? "err" : "")" for="@Id">
+    <span>@Field.Label @if (Field.Required) { <span class="err-msg">*</span> } <span class="tag custom">özel alan</span></span>
+    @switch (Field.Type)
+    {
+        case FieldType.Select:
+            <select id="@Id" value="@Value" @onchange="e => Set(e.Value?.ToString())">
+                <option value="">Seçin</option>
+                @foreach (var o in Field.Options) { <option value="@o">@o</option> }
+            </select>
+            break;
+        case FieldType.Boolean:
+            <select id="@Id" value="@Value" @onchange="e => Set(e.Value?.ToString())">
+                <option value="">Belirtilmedi</option>
+                <option value="true">Evet</option>
+                <option value="false">Hayır</option>
+            </select>
+            break;
+        case FieldType.Date:
+            <input id="@Id" type="date" value="@Value" @onchange="e => Set(e.Value?.ToString())" />
+            break;
+        case FieldType.Number:
+            <input id="@Id" inputmode="decimal" value="@Value" @onchange="e => Set(e.Value?.ToString())" />
+            break;
+        default:
+            <input id="@Id" value="@Value" maxlength="@(Field.MaxLength ?? 2000)" inputmode="@(Field.DigitsOnly ? "numeric" : "text")" @onchange="e => Set(e.Value?.ToString())" />
+            break;
+    }
+    @if (Error is not null) { <span class="err-msg">@Error</span> }
+    else if (Hint is { Length: > 0 }) { <span class="help">@Hint</span> }
+</label>
+
+@code {
+    [Parameter, EditorRequired] public FieldDefinitionDto Field { get; set; } = default!;
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Error { get; set; }
+    string Id => "f-" + Field.Id.ToString("N")[..10];
+
+    string Hint
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(Field.HelpText)) parts.Add(Field.HelpText);
+            if (Field.ExactLength is int n) parts.Add($"{n} {(Field.DigitsOnly ? "hane" : "karakter")}");
+            else if (Field.DigitsOnly) parts.Add("yalnızca rakam");
+            if (Field.Unique) parts.Add("grup genelinde benzersiz");
+            return string.Join(" · ", parts);
+        }
+    }
+
+    Task Set(string? v) { Value = v; return ValueChanged.InvokeAsync(v); }
+}

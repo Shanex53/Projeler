@@ -1,0 +1,242 @@
+@page "/envanter"
+@using System.Text.Json
+@inject Api Api
+@inject Session Session
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Envanter · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Envanter</h1><p>Tekil demirbaşlar. Miktarla izlenen malzemeler <a href="stok">Stok</a> sayfasında.</p></div>
+    <a class="btn" href="@ExportUrl" download>Dışa aktar (CSV)</a>
+    @if (Session.CanWrite) { <a class="btn pri" href="envanter/yeni">+ Envanter ekle</a> }
+</div>
+
+<section class="card">
+    <div class="toolbar">
+        <form class="search" @onsubmit="Reload"><label class="sr" for="iq">Listede ara</label><input id="iq" @bind="q" placeholder="Etiket, seri no, model, personel, özel alan" /></form>
+        <select class="sel-in" aria-label="Kategori" value="@categoryId" @onchange="e => { categoryId = NullGuid(e.Value); return Reload(); }">
+            <option value="">Tüm kategoriler</option>
+            @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
+        </select>
+        <select class="sel-in" aria-label="Depo" value="@warehouseId" @onchange="e => { warehouseId = NullGuid(e.Value); return Reload(); }">
+            <option value="">Tüm depolar</option>
+            @foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }
+        </select>
+        <div class="seg" role="group" aria-label="Durum">
+            <button class="@(status is null && !missingDoc ? "on" : "")" @onclick="() => SetStatus(null)">Tümü</button>
+            @foreach (var s in Enum.GetValues<ItemStatus>())
+            {
+                <button class="@(status == s ? "on" : "")" @onclick="() => SetStatus(s)">@Labels.Status(s)</button>
+            }
+            <button class="@(missingDoc ? "on" : "")" @onclick="ToggleMissing">Evrakı eksik</button>
+        </div>
+        <div style="flex:1"></div>
+        <div class="pop-wrap">
+            <button class="btn" @onclick="() => colsOpen = !colsOpen" aria-expanded="@colsOpen">Sütunlar · @cols.Count(c => c.On)</button>
+            @if (colsOpen)
+            {
+                <div class="pop">
+                    <h3>Görünen sütunlar</h3>
+                    @for (var i = 0; i < cols.Count; i++)
+                    {
+                        var idx = i; var c = cols[i];
+                        <label>
+                            <input type="checkbox" checked="@c.On" disabled="@c.Fixed" @onchange="e => Toggle(idx, (bool)e.Value!)" />
+                            @c.Label
+                            @if (c.Custom) { <span class="tag custom">özel</span> }
+                            <span class="mv">
+                                <button type="button" title="Yukarı" aria-label="@($"{c.Label} yukarı")" @onclick="() => Move(idx, -1)" @onclick:preventDefault>▲</button>
+                                <button type="button" title="Aşağı" aria-label="@($"{c.Label} aşağı")" @onclick="() => Move(idx, 1)" @onclick:preventDefault>▼</button>
+                            </span>
+                        </label>
+                    }
+                    <p class="muted" style="font-size:11.5px;margin:8px 4px 0">Tercih bu tarayıcıda saklanır. Sütun gizlemek veriyi saklamaz; erişim yetkiyle belirlenir. Kullanıcıya özel kayıtlı görünümler 2. aşamada.</p>
+                    <div class="row" style="margin-top:8px"><button class="btn sm" @onclick="ResetCols">Varsayılana dön</button><button class="btn sm pri" @onclick="() => colsOpen = false">Kapat</button></div>
+                </div>
+            }
+        </div>
+    </div>
+    @if (error is not null) { <div class="cb"><ErrorNote Error="error" /></div> }
+    <div class="tw">
+        <table>
+            <thead>
+                <tr>
+                    @foreach (var c in cols.Where(c => c.On))
+                    {
+                        <th>
+                            @if (c.Sort is not null)
+                            {
+                                <button @onclick="() => SortBy(c.Sort)">@c.Label @(sort == c.Sort ? (desc ? "↓" : "↑") : "")</button>
+                            }
+                            else { @c.Label }
+                            @if (c.Custom) { <span class="tag custom" style="margin-left:4px">özel</span> }
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @if (result is null) { <tr><td colspan="@cols.Count(c => c.On)" class="empty">Yükleniyor…</td></tr> }
+                else if (result.Items.Count == 0)
+                {
+                    <tr><td colspan="@cols.Count(c => c.On)" class="empty">Bu filtrelere uyan envanter yok. @(HasFilter ? "Filtreleri temizleyip tekrar deneyin." : "İlk kaydı eklemek için “Envanter ekle”yi kullanın.")</td></tr>
+                }
+                else
+                {
+                    @foreach (var r in result.Items)
+                    {
+                        <tr class="click" @onclick='() => Nav.NavigateTo($"envanter/{r.Id}")'>
+                            @foreach (var c in cols.Where(c => c.On)) { @Cell(r, c) }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (result is not null)
+    {
+        <div class="toolbar foot">
+            <span>@result.Total.ToString("N0", Fmt.Tr) kayıt</span>
+            @if (HasFilter) { <button class="btn link" @onclick="Clear">Filtreleri temizle</button> }
+            <Pager Page="result.Page" PageSize="result.PageSize" Total="result.Total" OnPage="Go" />
+        </div>
+    }
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
+    [SupplyParameterFromQuery(Name = "durum")] public string? Durum { get; set; }
+
+    record Col(string Key, string Label, string? Sort, bool Custom, FieldType? Type, bool Fixed = false) { public bool On { get; set; } = true; }
+
+    const string StoreKey = "ne.envanter.sutunlar.v1";
+    List<Col> cols = [];
+    List<CategoryDto> categories = [];
+    List<WarehouseDto> warehouses = [];
+    PagedResult<ItemListRow>? result;
+    ApiException? error;
+    string? q;
+    Guid? categoryId, warehouseId;
+    ItemStatus? status;
+    bool missingDoc, colsOpen, desc;
+    string sort = "tag";
+    int page = 1;
+
+    bool HasFilter => !string.IsNullOrWhiteSpace(q) || categoryId is not null || warehouseId is not null || status is not null || missingDoc;
+
+    static List<Col> Standard() =>
+    [
+        new("tag", "Envanter etiketi", "tag", false, null, true),
+        new("category", "Kategori", "category", false, null),
+        new("model", "Marka / model", "model", false, null),
+        new("serial", "Seri numarası", "serial", false, null),
+        new("status", "Durum", "status", false, null),
+        new("where", "Konum / zimmetli", "warehouse", false, null),
+        new("doc", "Evrak", null, false, null),
+        new("cost", "Maliyet", "cost", false, null) { On = false },
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        q = Q;
+        if (Enum.TryParse<ItemStatus>(Durum, out var s)) status = s;
+        try
+        {
+            var cTask = Api.Get<List<CategoryDto>>("api/categories");
+            var wTask = Api.Get<List<WarehouseDto>>("api/warehouses");
+            var fTask = Api.Get<List<FieldDefinitionDto>>("api/fields/all");
+            categories = await cTask; warehouses = await wTask;
+            var fields = (await fTask).Where(f => !f.Archived).ToList();
+            await BuildCols(fields);
+        }
+        catch (ApiException ex) { error = ex; }
+        await Load();
+    }
+
+    async Task BuildCols(List<FieldDefinitionDto> fields)
+    {
+        var all = Standard();
+        // Etikete göre tek sütun: aynı adlı alanlar (ör. farklı kategorilerdeki "IMEI") ayrı anahtarlarla gelir.
+        foreach (var f in fields) all.Add(new Col("f:" + f.Key, f.Label, "f:" + f.Id, true, f.Type) { On = f.Key is "imei_1" });
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("ne.get", StoreKey);
+            if (saved is not null)
+            {
+                var prefs = JsonSerializer.Deserialize<List<string[]>>(saved) ?? [];
+                var ordered = new List<Col>();
+                foreach (var p in prefs)
+                    if (all.FirstOrDefault(c => c.Key == p[0]) is { } c) { c.On = c.Fixed || p[1] == "1"; ordered.Add(c); }
+                ordered.AddRange(all.Where(c => !ordered.Contains(c)));
+                all = ordered;
+            }
+        }
+        catch (JSException) { }
+        catch (JsonException) { }
+        cols = all;
+    }
+
+    async Task SaveCols()
+    {
+        try { await JS.InvokeVoidAsync("ne.set", StoreKey, JsonSerializer.Serialize(cols.Select(c => new[] { c.Key, c.On ? "1" : "0" }))); }
+        catch (JSException) { }
+    }
+
+    Task Toggle(int i, bool on) { cols[i].On = on; return SaveCols(); }
+    Task Move(int i, int d)
+    {
+        var j = i + d;
+        if (j < 0 || j >= cols.Count) return Task.CompletedTask;
+        (cols[i], cols[j]) = (cols[j], cols[i]);
+        return SaveCols();
+    }
+    async Task ResetCols()
+    {
+        var fields = await Api.Get<List<FieldDefinitionDto>>("api/fields/all");
+        try { await JS.InvokeVoidAsync("ne.set", StoreKey, "[]"); } catch (JSException) { }
+        await BuildCols(fields.Where(f => !f.Archived).ToList());
+    }
+
+    string Query(bool paging)
+    {
+        var p = new List<string>();
+        if (!string.IsNullOrWhiteSpace(q)) p.Add("q=" + Uri.EscapeDataString(q.Trim()));
+        if (categoryId is not null) p.Add($"categoryId={categoryId}");
+        if (warehouseId is not null) p.Add($"warehouseId={warehouseId}");
+        if (status is not null) p.Add($"status={status}");
+        if (missingDoc) p.Add("missingDocument=true");
+        p.Add("sort=" + Uri.EscapeDataString(sort));
+        if (desc) p.Add("desc=true");
+        if (paging) { p.Add($"page={page}"); p.Add("pageSize=50"); }
+        return string.Join("&", p);
+    }
+
+    string ExportUrl => "api/items/export?" + Query(false);
+
+    async Task Load()
+    {
+        try { result = await Api.Get<PagedResult<ItemListRow>>("api/items?" + Query(true)); error = null; }
+        catch (ApiException ex) { error = ex; result = new([], 0, 1, 50); }
+    }
+
+    Task Reload() { page = 1; return Load(); }
+    Task Go(int p) { page = p; return Load(); }
+    Task SetStatus(ItemStatus? s) { status = s; missingDoc = false; return Reload(); }
+    Task ToggleMissing() { missingDoc = !missingDoc; status = null; return Reload(); }
+    Task SortBy(string s) { if (sort == s) desc = !desc; else { sort = s; desc = false; } return Reload(); }
+    Task Clear() { q = null; categoryId = null; warehouseId = null; status = null; missingDoc = false; return Reload(); }
+    static Guid? NullGuid(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
+
+    RenderFragment Cell(ItemListRow r, Col c) => c.Key switch
+    {
+        "tag" => @<td class="mono"><b>@r.Tag</b></td>,
+        "category" => @<td>@r.CategoryName</td>,
+        "model" => @<td>@r.ManufacturerName @r.ModelName</td>,
+        "serial" => @<td class="mono">@(r.Serial ?? "—")</td>,
+        "status" => @<td><StatusPill Status="r.Status" /></td>,
+        "where" => @<td>@if (r.EmployeeName is not null) { <b>@r.EmployeeName</b><span class="sub">@r.WarehouseName</span> } else { @r.WarehouseName<span class="sub">@(r.LocationName ?? "Lokasyon yok")</span> }</td>,
+        "doc" => @<td><DocPill Missing="r.SignedDocumentMissing" /></td>,
+        "cost" => @<td class="num">@Fmt.Money(r.Cost)</td>,
+        _ => @<td class="@(c.Type is FieldType.Text ? "mono" : "")">@(r.Fields.GetValueOrDefault(c.Key[2..]) is { Length: > 0 } v ? v : "—")</td>
+    };
+}

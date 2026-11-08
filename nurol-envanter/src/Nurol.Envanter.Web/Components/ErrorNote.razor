@@ -1,0 +1,14 @@
+@if (Error is not null)
+{
+    <div class="note error" role="alert">
+        <b>@Error.Message</b>
+        @if (Error.Errors.Count > 0 && ShowList)
+        {
+            <ul>@foreach (var e in Error.Errors.Values.Distinct()) { <li>@e</li> }</ul>
+        }
+    </div>
+}
+@code {
+    [Parameter] public ApiException? Error { get; set; }
+    [Parameter] public bool ShowList { get; set; } = true;
+}

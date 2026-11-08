@@ -175,6 +175,9 @@ public static class AssignmentEndpoints
         return new AssignmentDetail(header, asg.Note, lineDtos, docs);
     }
 
+    static async Task<Guid?> ExistingAsync(AppDbContext db, string? key) => string.IsNullOrEmpty(key) ? null :
+        await db.Assignments.Where(x => x.IdempotencyKey == key).Select(x => (Guid?)x.Id).FirstOrDefaultAsync();
+
     /// <summary>Kilitlenen kayıtları sırayla (id) alır; aynı cihaz kümesi için kilitlenme sırası sabit olur.</summary>
     static Task<List<InventoryItem>> LockItems(AppDbContext db, Guid[] ids) =>
         db.Items.FromSql($"SELECT *, xmin FROM items WHERE id = ANY({ids}) ORDER BY id FOR UPDATE").ToListAsync();
@@ -189,6 +192,8 @@ public static class AssignmentEndpoints
         if (!emp.IsActive) throw AppException.Conflict("Pasif personele zimmet yapılamaz.");
 
         var items = await LockItems(db, ids);
+        // Aynı anahtarla eşzamanlı gelen tekrar: kilit alındığında ilk istek tamamlanmış olur, onun sonucu döner.
+        if (await ExistingAsync(db, idempotencyKey) is Guid done) return done;
         if (items.Count != ids.Length || items.Any(i => !a.CanReadWarehouse(i.WarehouseId))) throw AppException.NotFound("Seçilen cihazlardan biri");
         var errors = new List<string>();
         foreach (var i in items)
@@ -230,6 +235,7 @@ public static class AssignmentEndpoints
         if (ids.Length == 0) throw AppException.Invalid("İade alınacak en az bir cihaz seçin.");
         var emp = await a.Employees(db).Include(e => e.Company).FirstOrDefaultAsync(e => e.Id == employeeId) ?? throw AppException.NotFound("Personel");
         var items = await LockItems(db, ids);
+        if (await ExistingAsync(db, idempotencyKey) is Guid done) return done;
         if (items.Count != ids.Length || items.Any(i => !a.CanReadWarehouse(i.WarehouseId))) throw AppException.NotFound("Seçilen cihazlardan biri");
         var wrong = items.Where(i => i.Status != ItemStatus.Assigned || i.EmployeeId != emp.Id).Select(i => i.Tag).ToList();
         if (wrong.Count > 0) throw AppException.Conflict($"Şu cihazlar {emp.FullName} kişisine zimmetli değil: {string.Join(", ", wrong)}.");

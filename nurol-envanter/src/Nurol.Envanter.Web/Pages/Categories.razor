@@ -1,0 +1,316 @@
+@page "/kategoriler"
+@using System.Text.Json
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+
+<PageTitle>Kategoriler ve Alanlar · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Kategoriler ve Alanlar</h1><p>Alan eklemek kod değişikliği veya yeniden kurulum gerektirmez. Kullanımdaki alan silinmez, arşivlenir.</p></div>
+    @if (canEdit) { <button class="btn" @onclick="() => OpenCategory(null)">+ Kategori</button> }
+</div>
+@if (!canEdit) { <div class="note">Tanımları yalnızca sistem veya şirket yöneticisi değiştirebilir. Bu sayfayı görüntüleyebilirsiniz.</div> }
+
+<div class="grid g-side">
+    <section class="card">
+        <div class="ch"><h2>Kategoriler</h2></div>
+        <div class="cat-list">
+            @foreach (var c in categories)
+            {
+                <button class="@(c.Id == selId ? "on" : "")" @onclick="() => Select(c.Id)">
+                    <span>@c.Name @if (c.Archived) { <span class="tag">arşiv</span> }</span><span class="tag">@c.FieldCount alan</span>
+                </button>
+            }
+            @if (categories.Count == 0) { <p class="muted" style="margin:10px">Henüz kategori yok.</p> }
+        </div>
+    </section>
+
+    @if (Sel is { } cat)
+    {
+        <div class="stack">
+            <section class="card">
+                <div class="ch">
+                    <h2>@cat.Name <span class="tag mono">@cat.Code</span> @if (cat.RequiresSerial) { <span class="tag">seri no zorunlu</span> }</h2>
+                    @if (canEdit)
+                    {
+                        <button class="btn sm" @onclick="() => OpenCategory(cat)">Kategoriyi düzenle</button>
+                        <button class="btn sm pri" @onclick="() => OpenField(null, cat.Id, null)">+ Alan ekle</button>
+                    }
+                </div>
+                <FieldList Fields="@fields.Where(f => f.CategoryId == cat.Id).ToList()" CanEdit="canEdit" OnEdit="f => OpenField(f, cat.Id, null)" OnRemove="Remove" OnRestore="Restore" />
+                <div class="toolbar foot">Varsayılan alan grubu: bu kategorideki tüm modeller bu alanları kullanır. Etiket önekleri: <span class="mono">şirket kodu-@cat.Code-000001</span></div>
+            </section>
+
+            <section class="card">
+                <div class="ch"><h2>Modeller ve modele özel ek alanlar</h2>@if (canEdit) { <button class="btn sm" @onclick="OpenModel">+ Model</button> }</div>
+                <div class="cb stack">
+                    @if (models.Count == 0) { <p class="muted" style="margin:0">Bu kategoride model yok. Envanter eklemek için önce model tanımlayın.</p> }
+                    @foreach (var m in models)
+                    {
+                        var extra = fields.Where(f => f.AssetModelId == m.Id).ToList();
+                        <div class="card" style="border-style:dashed">
+                            <div class="ch">
+                                <h3 style="flex:1">@m.ManufacturerName @m.Name @if (m.Archived) { <span class="tag">arşiv</span> }</h3>
+                                @if (canEdit)
+                                {
+                                    <button class="btn sm" @onclick="() => ArchiveModel(m)">@(m.Archived ? "Arşivden çıkar" : "Arşivle")</button>
+                                    <button class="btn sm" @onclick="() => OpenField(null, null, m.Id)">+ Ek alan</button>
+                                }
+                            </div>
+                            @if (extra.Count > 0)
+                            {
+                                <FieldList Fields="extra" CanEdit="canEdit" OnEdit="f => OpenField(f, null, m.Id)" OnRemove="Remove" OnRestore="Restore" />
+                            }
+                        </div>
+                    }
+                </div>
+            </section>
+        </div>
+    }
+</div>
+
+@if (fieldForm is not null)
+{
+    <Modal Title="@(fieldForm.Id is null ? "Alan ekle" : "Alanı düzenle")" OnClose="() => fieldForm = null" Wide="true">
+        <ChildContent>
+            <form class="form two" id="ff" @onsubmit="SaveField">
+                <label class="fld" for="ff-label">Alan adı<input id="ff-label" @bind="fieldForm.Label" placeholder="Ör. IMEI 1" /></label>
+                <label class="fld" for="ff-type">Tip
+                    <select id="ff-type" value="@fieldForm.Type" disabled="@(fieldForm.ValueCount > 0)" @onchange="e => fieldForm.Type = Enum.Parse<FieldType>(e.Value!.ToString()!)">
+                        @foreach (var t in Enum.GetValues<FieldType>()) { <option value="@t">@Labels.FieldType(t)</option> }
+                    </select>
+                    @if (fieldForm.ValueCount > 0) { <span class="help">@fieldForm.ValueCount kayıtta değer var; tip değiştirilemez.</span> }
+                </label>
+                <label class="fld full" for="ff-help">Yardım metni<input id="ff-help" @bind="fieldForm.Help" placeholder="Formda alanın altında görünür" /></label>
+                <label class="fld" for="ff-order">Sıra<input id="ff-order" type="number" @bind="fieldForm.Order" /></label>
+                <div class="fld"><span>Kurallar</span>
+                    <label class="check"><input type="checkbox" @bind="fieldForm.Required" /> Zorunlu</label>
+                    @if (fieldForm.Type is FieldType.Text or FieldType.Number) { <label class="check"><input type="checkbox" @bind="fieldForm.Unique" /> Grup genelinde benzersiz</label> }
+                </div>
+                @if (fieldForm.Type == FieldType.Text)
+                {
+                    <label class="fld" for="ff-max">En fazla karakter<input id="ff-max" type="number" @bind="fieldForm.MaxLength" /></label>
+                    <label class="fld" for="ff-exact">Tam uzunluk (ör. IMEI için 15)<input id="ff-exact" type="number" @bind="fieldForm.ExactLength" /></label>
+                    <label class="check full"><input type="checkbox" @bind="fieldForm.DigitsOnly" /> Yalnızca rakam (baştaki sıfırlar korunur)</label>
+                }
+                @if (fieldForm.Type == FieldType.Select)
+                {
+                    <label class="fld full" for="ff-opts">Seçenekler (her satıra bir tane)<textarea id="ff-opts" @bind="fieldForm.Options" rows="5"></textarea></label>
+                }
+                @if (conflicts.Count > 0)
+                {
+                    <div class="note warn full">
+                        <b>@error?.Message</b>
+                        @foreach (var c in conflicts)
+                        {
+                            <div style="margin-top:6px">@c.Rule: <span class="mono">@string.Join(", ", c.ItemTags.Take(30))</span>@(c.ItemTags.Count > 30 ? $" ve {c.ItemTags.Count - 30} kayıt daha" : "")</div>
+                        }
+                    </div>
+                }
+                else { <div class="full"><ErrorNote Error="error" /></div> }
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => fieldForm = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="ff" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@if (catForm is not null)
+{
+    <Modal Title="@(catForm.Id is null ? "Kategori ekle" : "Kategoriyi düzenle")" OnClose="() => catForm = null">
+        <ChildContent>
+            <form class="form two" id="cf" @onsubmit="SaveCategory">
+                <label class="fld" for="cf-name">Ad<input id="cf-name" @bind="catForm.Name" placeholder="Cep Telefonu" /></label>
+                <label class="fld" for="cf-code">Kod (etikette kullanılır)<input id="cf-code" @bind="catForm.Code" placeholder="TLF" maxlength="6" /></label>
+                <label class="check full"><input type="checkbox" @bind="catForm.Serial" /> Seri numarası zorunlu</label>
+                <div class="full"><ErrorNote Error="error" /></div>
+            </form>
+        </ChildContent>
+        <Footer>
+            @if (catForm.Id is not null) { <button class="btn danger" @onclick="ArchiveCategory">@(Sel?.Archived == true ? "Arşivden çıkar" : "Arşivle")</button> }
+            <button class="btn" @onclick="() => catForm = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="cf" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@if (modelForm is not null)
+{
+    <Modal Title="Model ekle" OnClose="() => modelForm = null">
+        <ChildContent>
+            <form class="form" id="mf" @onsubmit="SaveModel">
+                <label class="fld" for="mf-man">Marka
+                    <select id="mf-man" value="@modelForm.ManufacturerId" @onchange="e => modelForm.ManufacturerId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">Seçin</option>
+                        @foreach (var m in manufacturers) { <option value="@m.Id">@m.Name</option> }
+                    </select>
+                </label>
+                <label class="fld" for="mf-newman">veya yeni marka<input id="mf-newman" @bind="modelForm.NewManufacturer" placeholder="Listede yoksa yazın" /></label>
+                <label class="fld" for="mf-name">Model adı<input id="mf-name" @bind="modelForm.Name" placeholder="Galaxy A55" /></label>
+                <ErrorNote Error="error" />
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => modelForm = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="mf" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    class FieldForm { public Guid? Id, CategoryId, ModelId; public string? Label, Help, Options; public FieldType Type; public int Order; public bool Required, Unique, DigitsOnly; public int? MaxLength, ExactLength; public int ValueCount; }
+    class CatForm { public Guid? Id; public string? Name, Code; public bool Serial; }
+    class ModelForm { public Guid? ManufacturerId; public string? Name, NewManufacturer; }
+
+    List<CategoryDto> categories = [];
+    List<FieldDefinitionDto> fields = [];
+    List<AssetModelDto> models = [];
+    List<ManufacturerDto> manufacturers = [];
+    List<FieldConflictDto> conflicts = [];
+    Guid? selId;
+    FieldForm? fieldForm;
+    CatForm? catForm;
+    ModelForm? modelForm;
+    ApiException? error;
+    bool busy, canEdit;
+
+    CategoryDto? Sel => categories.FirstOrDefault(c => c.Id == selId);
+
+    protected override async Task OnInitializedAsync()
+    {
+        canEdit = Session.CanManageDefinitions;
+        await LoadCategories();
+        manufacturers = await Api.Get<List<ManufacturerDto>>("api/manufacturers");
+        if (categories.Count > 0) await Select(categories[0].Id);
+    }
+
+    async Task LoadCategories() => categories = await Api.Get<List<CategoryDto>>("api/categories?includeArchived=true");
+
+    async Task Select(Guid id)
+    {
+        selId = id;
+        models = await Api.Get<List<AssetModelDto>>($"api/models?categoryId={id}&includeArchived=true");
+        var all = new List<FieldDefinitionDto>(await Api.Get<List<FieldDefinitionDto>>($"api/fields?categoryId={id}&includeArchived=true"));
+        foreach (var m in models) all.AddRange(await Api.Get<List<FieldDefinitionDto>>($"api/fields?modelId={m.Id}&includeArchived=true"));
+        fields = all;
+    }
+
+    void OpenField(FieldDefinitionDto? f, Guid? categoryId, Guid? modelId)
+    {
+        error = null; conflicts = [];
+        fieldForm = f is null
+            ? new FieldForm { CategoryId = categoryId, ModelId = modelId, Type = FieldType.Text, Order = fields.Count(x => x.CategoryId == categoryId && x.AssetModelId == modelId) + 1 }
+            : new FieldForm
+            {
+                Id = f.Id, CategoryId = f.CategoryId, ModelId = f.AssetModelId, Label = f.Label, Help = f.HelpText, Type = f.Type, Order = f.SortOrder,
+                Required = f.Required, Unique = f.Unique, DigitsOnly = f.DigitsOnly, MaxLength = f.MaxLength, ExactLength = f.ExactLength,
+                Options = string.Join("\n", f.Options), ValueCount = f.ValueCount
+            };
+    }
+
+    async Task SaveField()
+    {
+        var f = fieldForm!;
+        error = null; conflicts = [];
+        busy = true;
+        var body = new FieldDefinitionSave(f.Label ?? "", f.Help, f.Type, f.CategoryId, f.ModelId, f.Order, f.Required, f.Unique,
+            f.MaxLength is > 0 ? f.MaxLength : null, f.DigitsOnly, f.ExactLength is > 0 ? f.ExactLength : null,
+            (f.Options ?? "").Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList());
+        try
+        {
+            if (f.Id is Guid id) await Api.Put<FieldDefinitionDto>($"api/fields/{id}", body);
+            else await Api.Post<FieldDefinitionDto>("api/fields", body);
+            Toasts.Show("Alan kaydedildi");
+            fieldForm = null;
+            await LoadCategories();
+            await Select(selId!.Value);
+        }
+        catch (ApiException ex)
+        {
+            error = ex;
+            if (ex.Body is JsonElement b && b.TryGetProperty("conflicts", out var c))
+                conflicts = c.Deserialize<List<FieldConflictDto>>(Api.Json) ?? [];
+        }
+        finally { busy = false; }
+    }
+
+    async Task Remove(FieldDefinitionDto f)
+    {
+        try
+        {
+            var r = await Api.Delete<JsonElement>($"api/fields/{f.Id}");
+            Toasts.Show(r.GetProperty("archived").GetBoolean() ? $"{f.Label} kullanımda olduğu için arşivlendi; eski değerler korunuyor" : $"{f.Label} silindi");
+            await LoadCategories();
+            await Select(selId!.Value);
+        }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
+    }
+
+    async Task Restore(FieldDefinitionDto f)
+    {
+        try { await Api.Post($"api/fields/{f.Id}/restore"); Toasts.Show($"{f.Label} arşivden çıkarıldı"); await Select(selId!.Value); }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
+    }
+
+    void OpenCategory(CategoryDto? c)
+    {
+        error = null;
+        catForm = c is null ? new CatForm() : new CatForm { Id = c.Id, Name = c.Name, Code = c.Code, Serial = c.RequiresSerial };
+    }
+
+    async Task SaveCategory()
+    {
+        error = null; busy = true;
+        try
+        {
+            var body = new CategorySave(catForm!.Code ?? "", catForm.Name ?? "", catForm.Serial);
+            Guid id;
+            if (catForm.Id is Guid existing) { await Api.Put($"api/categories/{existing}", body); id = existing; }
+            else id = (await Api.Post<JsonElement>("api/categories", body)).GetProperty("id").GetGuid();
+            catForm = null;
+            Toasts.Show("Kategori kaydedildi");
+            await LoadCategories();
+            await Select(id);
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task ArchiveCategory()
+    {
+        try { await Api.Post($"api/categories/{catForm!.Id}/archive"); catForm = null; await LoadCategories(); }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    void OpenModel() { error = null; modelForm = new ModelForm(); }
+
+    async Task SaveModel()
+    {
+        error = null; busy = true;
+        try
+        {
+            var manId = modelForm!.ManufacturerId;
+            if (!string.IsNullOrWhiteSpace(modelForm.NewManufacturer))
+            {
+                var m = await Api.Post<ManufacturerDto>("api/manufacturers", new ManufacturerSave(modelForm.NewManufacturer));
+                manufacturers = await Api.Get<List<ManufacturerDto>>("api/manufacturers");
+                manId = m.Id;
+            }
+            if (manId is null) { error = new ApiException("Marka seçin veya yeni marka yazın."); return; }
+            await Api.Post("api/models", new AssetModelSave(selId!.Value, manId.Value, modelForm.Name ?? ""));
+            modelForm = null;
+            Toasts.Show("Model eklendi");
+            await Select(selId.Value);
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task ArchiveModel(AssetModelDto m)
+    {
+        try { await Api.Post($"api/models/{m.Id}/archive"); await Select(selId!.Value); }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
+    }
+}

@@ -1,3 +1,94 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject Session Session
+@inject NavigationManager Nav
+@inject Toasts Toasts
 
-@Body
+@if (!ready)
+{
+    <div class="boot"><div class="brand-mark">NE</div><span>Oturum kontrol ediliyor…</span></div>
+}
+else
+{
+    <div class="app">
+        <aside class="side">
+            <a class="brand" href=""><div class="brand-mark">NE</div><div><b>Nurol Envanter</b><small>Demirbaş · Stok · Zimmet</small></div></a>
+            <nav class="nav" aria-label="Ana menü">
+                <NavLink href="" Match="NavLinkMatch.All"><Icon Name="genel" />Genel Bakış</NavLink>
+                <NavLink href="envanter"><Icon Name="envanter" />Envanter</NavLink>
+                <NavLink href="stok"><Icon Name="stok" />Stok</NavLink>
+                <NavLink href="zimmetler"><Icon Name="zimmetler" />Zimmetler</NavLink>
+                <NavLink href="personeller"><Icon Name="personeller" />Personeller</NavLink>
+                <div class="sep">Tanımlar</div>
+                <NavLink href="kategoriler"><Icon Name="kategoriler" />Kategoriler ve Alanlar</NavLink>
+                <NavLink href="depolar"><Icon Name="depolar" />Depolar</NavLink>
+                <div class="sep">Sistem</div>
+                <NavLink href="raporlar"><Icon Name="raporlar" />Raporlar</NavLink>
+                @if (Session.IsSystemAdmin)
+                {
+                    <NavLink href="yonetim"><Icon Name="yonetim" />Yönetim</NavLink>
+                }
+            </nav>
+            <div class="side-foot">Transferler ve AD entegrasyonu 2. aşamada eklenecek.</div>
+        </aside>
+        <div class="main">
+            <header class="top">
+                <form class="search" @onsubmit="Search" role="search">
+                    <Icon Name="ara" Size="16" />
+                    <label class="sr" for="global-q">Ara</label>
+                    <input id="global-q" @bind="q" placeholder="Etiket, seri no, IMEI veya personel ara" />
+                </form>
+                <div class="sp"></div>
+                <div class="user">
+                    <div class="avatar">@Initials</div>
+                    <span class="who"><b>@Session.Me?.DisplayName</b><br /><span class="muted" style="font-size:11.5px">@Session.RoleLabel</span></span>
+                    <button class="btn sm" @onclick="Logout">Çıkış</button>
+                </div>
+            </header>
+            <main class="view">@Body</main>
+        </div>
+    </div>
+}
+@if (Toasts.Message is not null)
+{
+    <div class="toast" role="status">@Toasts.Message</div>
+}
+
+@code {
+    bool ready;
+    string? q;
+
+    string Initials => string.Concat((Session.Me?.DisplayName ?? "?").Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(s => char.ToUpper(s[0])));
+
+    protected override async Task OnInitializedAsync()
+    {
+        Toasts.Changed += Refresh;
+        Session.Changed += Refresh;
+        if (!await Session.EnsureAsync())
+        {
+            var back = Nav.ToBaseRelativePath(Nav.Uri);
+            Nav.NavigateTo(string.IsNullOrEmpty(back) ? "giris" : $"giris?donus={Uri.EscapeDataString(back)}");
+            return;
+        }
+        ready = true;
+    }
+
+    void Refresh() => InvokeAsync(StateHasChanged);
+
+    void Search()
+    {
+        if (!string.IsNullOrWhiteSpace(q)) Nav.NavigateTo($"envanter?q={Uri.EscapeDataString(q.Trim())}");
+    }
+
+    async Task Logout()
+    {
+        await Session.LogoutAsync();
+        Nav.NavigateTo("giris", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        Toasts.Changed -= Refresh;
+        Session.Changed -= Refresh;
+    }
+}

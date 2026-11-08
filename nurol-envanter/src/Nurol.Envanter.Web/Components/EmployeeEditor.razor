@@ -1,0 +1,62 @@
+@inject Api Api
+
+<Modal Title="@(Form.Id is null ? "Personel ekle" : "Personeli düzenle")" OnClose="OnClose">
+    <ChildContent>
+        <form class="form two" id="emp-form" @onsubmit="Save">
+            <label class="fld full" for="em-name">Ad soyad<input id="em-name" @bind="Form.FullName" /></label>
+            <label class="fld" for="em-co">Şirket
+                <select id="em-co" value="@Form.CompanyId" @onchange="e => Form.CompanyId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                    <option value="">Seçin</option>
+                    @foreach (var c in Companies) { <option value="@c.Id">@c.Name</option> }
+                </select>
+                <span class="help">Zimmet yalnızca bu şirketin depolarındaki cihazlarla yapılır.</span>
+            </label>
+            <label class="fld" for="em-reg">Sicil no<input id="em-reg" @bind="Form.RegistryNo" /></label>
+            <label class="fld" for="em-title">Unvan<input id="em-title" @bind="Form.Title" /></label>
+            <label class="fld" for="em-dept">Birim<input id="em-dept" @bind="Form.Department" /></label>
+            <label class="fld full" for="em-mail">E-posta<input id="em-mail" type="email" @bind="Form.Email" /></label>
+            <label class="check full"><input type="checkbox" @bind="Form.IsActive" /> Aktif personel</label>
+            @if (!Form.IsActive && Form.OpenItems > 0) { <p class="note warn full" style="margin:0">Bu personelin @Form.OpenItems açık zimmeti var. Pasife alınabilir; açık zimmetler listede işaretli kalır.</p> }
+            <div class="full"><ErrorNote Error="error" /></div>
+        </form>
+    </ChildContent>
+    <Footer>
+        <button class="btn" @onclick="OnClose">Vazgeç</button>
+        <button class="btn pri" type="submit" form="emp-form" disabled="@busy">Kaydet</button>
+    </Footer>
+</Modal>
+
+@code {
+    public class EmpForm
+    {
+        public Guid? Id, CompanyId;
+        public string? FullName, RegistryNo, Title, Department, Email;
+        public bool IsActive = true;
+        public int OpenItems;
+        public static EmpForm From(EmployeeDto? e, List<CompanyDto> companies) => e is null
+            ? new EmpForm { CompanyId = companies.Count == 1 ? companies[0].Id : null }
+            : new EmpForm { Id = e.Id, CompanyId = e.CompanyId, FullName = e.FullName, RegistryNo = e.RegistryNo, Title = e.Title, Department = e.Department, Email = e.Email, IsActive = e.IsActive, OpenItems = e.OpenItemCount };
+    }
+
+    [Parameter, EditorRequired] public EmpForm Form { get; set; } = default!;
+    [Parameter] public List<CompanyDto> Companies { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSaved { get; set; }
+    ApiException? error;
+    bool busy;
+
+    async Task Save()
+    {
+        error = null;
+        if (Form.CompanyId is null) { error = new ApiException("Şirket seçin."); return; }
+        busy = true;
+        try
+        {
+            var body = new EmployeeSave(Form.CompanyId.Value, Form.RegistryNo, Form.FullName ?? "", Form.Title, Form.Department, Form.Email, Form.IsActive);
+            if (Form.Id is Guid id) await Api.Put($"api/employees/{id}", body); else await Api.Post("api/employees", body);
+            await OnSaved.InvokeAsync();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

@@ -1,0 +1,143 @@
+@page "/zimmetler/{Id:guid}"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+
+<PageTitle>@(d?.Header.No ?? "Tutanak") · Nurol Envanter</PageTitle>
+@if (d is null)
+{
+    @if (error is not null) { <ErrorNote Error="error" /> } else { <div class="loading">Yükleniyor…</div> }
+}
+else
+{
+    var h = d.Header;
+    var issue = h.Kind == AssignmentKind.Issue;
+    <div class="head">
+        <div class="t">
+            <div class="crumb"><a href="zimmetler">Zimmetler</a> / @(issue ? "Zimmet" : "İade")</div>
+            <h1 style="font-family:var(--mono)">@h.No</h1>
+            <p>@(issue ? "Zimmet tutanağı" : "İade tutanağı") · @Fmt.DateTime(h.At) · <DocPill Missing="!h.SignedUploaded" /></p>
+        </div>
+        <a class="btn" href="api/assignments/@h.Id/pdf" target="_blank" rel="noopener">Tutanağı aç</a>
+        <a class="btn pri" href="api/assignments/@h.Id/pdf" download>PDF indir</a>
+    </div>
+
+    <div class="grid g2">
+        <section class="card">
+            <div class="ch"><h2>Tutanak bilgileri</h2></div>
+            <div class="cb">
+                <dl class="kv">
+                    <dt>@(issue ? "Teslim alan" : "İade eden")</dt><dd><a href="personeller/@h.EmployeeId">@h.EmployeeName</a> <span class="muted">@h.Department</span></dd>
+                    <dt>Depo</dt><dd>@h.WarehouseName</dd>
+                    <dt>İşlemi yapan</dt><dd>@h.UserName</dd>
+                    @if (d.Note is not null) { <dt>Açıklama</dt><dd>@d.Note</dd> }
+                </dl>
+                <div class="group-title">Cihazlar</div>
+                <div class="tw">
+                    <table>
+                        <thead><tr><th>Etiket</th><th>Cihaz</th><th>Seri no</th><th>Ek bilgiler</th><th>Durum notu</th>@if (issue) { <th>Zimmet</th> }</tr></thead>
+                        <tbody>
+                            @foreach (var l in d.Lines)
+                            {
+                                <tr>
+                                    <td class="mono"><a href="envanter/@l.ItemId">@l.Tag</a></td>
+                                    <td>@l.Description</td>
+                                    <td class="mono">@(l.Serial ?? "—")</td>
+                                    <td style="white-space:pre-line;font-size:12.5px">@(l.Extra ?? "—")</td>
+                                    <td>@(l.Condition ?? "—")</td>
+                                    @if (issue) { <td>@if (l.Open) { <span class="pill p-info">Açık</span> } else { <span class="pill p-mute">İade edildi</span> }</td> }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                <p class="muted" style="font-size:12.5px;margin:12px 0 0">Tutanak işlem anındaki verilerle üretilmiştir. Sonradan personel, kategori veya alan değişiklikleri bu belgeyi değiştirmez.</p>
+            </div>
+        </section>
+
+        <div class="stack">
+            <section class="card">
+                <div class="ch"><h2>İmzalı kopya</h2>@if (!h.SignedUploaded) { <span class="pill p-crit">Eksik</span> }</div>
+                <div class="cb stack">
+                    @foreach (var doc in d.Documents.Where(x => x.Kind == DocumentKind.Signed))
+                    {
+                        <div class="doc-row" style="padding:0;border:0">
+                            <div class="doc-ic ok">@Ext(doc.ContentType)</div>
+                            <div class="grow"><b>Sürüm @doc.Version</b><span class="muted" style="display:block;font-size:12px">@Fmt.DateTime(doc.At) · @doc.UserName · @Fmt.Size(doc.Size)<br /><span class="mono" title="SHA-256">SHA-256 @doc.Sha256[..12]…</span></span></div>
+                            <a class="btn sm" href="api/documents/@doc.Id" download>İndir</a>
+                        </div>
+                    }
+                    @if (Session.CanWrite)
+                    {
+                        <label class="drop" for="upl">
+                            <b>@(h.SignedUploaded ? "Yeni sürüm yükle (öncekiler korunur)" : "İmzalı taramayı sürükleyin veya seçin")</b><br />
+                            <span style="font-size:12px">PDF, JPEG veya PNG · en fazla 20 MB</span>
+                            <InputFile id="upl" OnChange="Upload" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" disabled="@busy" />
+                        </label>
+                        @if (busy) { <p class="muted" style="margin:0">Yükleniyor…</p> }
+                        <ErrorNote Error="error" />
+                    }
+                    <p class="muted" style="margin:0;font-size:12.5px">Islak imzalı belge yüklemesi elektronik imza yerine geçmez. Dosyalar özel depoda saklanır ve yalnızca yetkili kullanıcılar indirebilir.</p>
+                </div>
+            </section>
+            <section class="card">
+                <div class="ch"><h2>Üretilen belge</h2></div>
+                <div class="cb" style="padding-block:4px">
+                    @foreach (var doc in d.Documents.Where(x => x.Kind == DocumentKind.Generated))
+                    {
+                        <div class="doc-row">
+                            <div class="doc-ic">PDF</div>
+                            <div class="grow"><b>@doc.FileName</b><span class="muted" style="display:block;font-size:12px">@Fmt.DateTime(doc.At) · @Fmt.Size(doc.Size)</span></div>
+                            <a class="btn sm" href="api/documents/@doc.Id" download>İndir</a>
+                        </div>
+                    }
+                </div>
+            </section>
+            @if (issue && Session.CanWrite && d.Lines.Any(l => l.Open))
+            {
+                <div class="row">
+                    <a class="btn" href="zimmetler/iade?personel=@h.EmployeeId">Bu personelden iade al</a>
+                    <a class="btn" href="zimmetler/devir?personel=@h.EmployeeId">Devret</a>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    AssignmentDetail? d;
+    ApiException? error;
+    bool busy;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    async Task Load()
+    {
+        try { d = await Api.Get<AssignmentDetail>($"api/assignments/{Id}"); }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task Upload(InputFileChangeEventArgs e)
+    {
+        error = null;
+        var f = e.File;
+        const long max = 20 * 1024 * 1024;
+        if (f.Size > max) { error = new ApiException("Dosya 20 MB sınırını aşıyor. Daha düşük çözünürlükte tarayın."); return; }
+        busy = true;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            var stream = new StreamContent(f.OpenReadStream(max));
+            stream.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(string.IsNullOrEmpty(f.ContentType) ? "application/octet-stream" : f.ContentType);
+            content.Add(stream, "file", f.Name);
+            var doc = await Api.Upload<DocumentDto>($"api/assignments/{Id}/signed", content);
+            Toasts.Show($"İmzalı kopya yüklendi (sürüm {doc.Version})");
+            await Load();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    static string Ext(string ct) => ct switch { "image/png" => "PNG", "image/jpeg" => "JPG", _ => "PDF" };
+}

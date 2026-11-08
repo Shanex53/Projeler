@@ -1,0 +1,43 @@
+@* Personel seçici: arama + liste. Seçili kişi üstte özetlenir. *@
+@if (Current is not null)
+{
+    <div class="doc-row" style="padding-top:0">
+        <div class="avatar">@Initials(Current.FullName)</div>
+        <div class="grow"><b>@Current.FullName</b><span class="muted" style="display:block;font-size:12px">@Current.CompanyName · @(Current.Department ?? "Birim yok") · @(Current.RegistryNo is null ? "sicil yok" : "Sicil " + Current.RegistryNo)</span></div>
+        <button type="button" class="btn sm" @onclick="() => Select(null)">Değiştir</button>
+    </div>
+}
+else
+{
+    <div class="search"><label class="sr" for="@id">Personel ara</label><input id="@id" @bind="q" @bind:event="oninput" placeholder="Ad, sicil no veya birim" /></div>
+    <div class="pick" style="max-height:280px">
+        @{ var list = Filtered.Take(50).ToList(); }
+        @if (list.Count == 0) { <p class="muted" style="margin:12px">@(OnlyWithItems ? "Üzerinde zimmetli cihaz olan personel bulunamadı." : "Personel bulunamadı.")</p> }
+        @foreach (var e in list)
+        {
+            <label>
+                <input type="radio" name="@id" @onchange="() => Select(e.Id)" />
+                <span><b>@e.FullName</b><span class="muted" style="display:block;font-size:12px">@e.CompanyName · @(e.Department ?? "—")</span></span>
+                @if (e.OpenItemCount > 0) { <span class="tag info">@e.OpenItemCount açık zimmet</span> }
+            </label>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public List<EmployeeDto> Employees { get; set; } = [];
+    [Parameter] public Guid? Selected { get; set; }
+    [Parameter] public EventCallback<Guid?> SelectedChanged { get; set; }
+    [Parameter] public bool OnlyWithItems { get; set; }
+    readonly string id = "emp-" + Guid.NewGuid().ToString("N")[..6];
+    string? q;
+
+    EmployeeDto? Current => Employees.FirstOrDefault(e => e.Id == Selected);
+    IEnumerable<EmployeeDto> Filtered => Employees
+        .Where(e => e.IsActive || OnlyWithItems)
+        .Where(e => !OnlyWithItems || e.OpenItemCount > 0)
+        .Where(e => string.IsNullOrWhiteSpace(q) || $"{e.FullName} {e.RegistryNo} {e.Department}".Contains(q.Trim(), StringComparison.CurrentCultureIgnoreCase));
+
+    Task Select(Guid? v) { q = null; return SelectedChanged.InvokeAsync(v); }
+    static string Initials(string n) => string.Concat(n.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(2).Select(s => char.ToUpper(s[0])));
+}

@@ -1,0 +1,40 @@
+<div>
+    <div class="fl-row h"><span>Alan</span><span>Tip</span><span>Kurallar</span><span></span></div>
+    @if (Fields.Count == 0) { <div class="fl-row"><span class="muted">Alan tanımlı değil.</span></div> }
+    @foreach (var f in Fields.OrderBy(f => f.Archived).ThenBy(f => f.SortOrder))
+    {
+        <div class="fl-row @(f.Archived ? "arch" : "")">
+            <span><b>@f.Label</b> <span class="mono muted" style="font-size:11px">@f.Key</span>@if (f.HelpText is not null) { <span class="sub muted" style="display:block;font-size:12px">@f.HelpText</span> }</span>
+            <span>@Labels.FieldType(f.Type)</span>
+            <span class="rules">
+                @if (f.Archived) { <span class="tag">Arşivlendi · @f.ValueCount kayıtta değer var</span> }
+                @if (f.Required) { <span class="tag">Zorunlu</span> }
+                @if (f.Unique) { <span class="tag">Benzersiz · grup geneli</span> }
+                @if (f.ExactLength is int n) { <span class="tag">@n @(f.DigitsOnly ? "hane" : "karakter")</span> }
+                else if (f.DigitsOnly) { <span class="tag">Yalnızca rakam</span> }
+                @if (f.MaxLength is int m) { <span class="tag">En fazla @m</span> }
+                @if (f.Options.Count > 0) { <span class="tag">@string.Join(", ", f.Options.Take(5))@(f.Options.Count > 5 ? "…" : "")</span> }
+                @if (!f.Archived && !f.Required && !f.Unique && f.ExactLength is null && !f.DigitsOnly && f.MaxLength is null && f.Options.Count == 0) { <span class="muted">—</span> }
+            </span>
+            <span class="row">
+                @if (CanEdit)
+                {
+                    @if (f.Archived) { <button class="btn sm" @onclick="() => OnRestore.InvokeAsync(f)">Geri al</button> }
+                    else
+                    {
+                        <button class="btn sm" @onclick="() => OnEdit.InvokeAsync(f)">Düzenle</button>
+                        <button class="btn sm danger" title="@(f.ValueCount > 0 ? "Kullanımda: arşivlenir" : "Silinir")" @onclick="() => OnRemove.InvokeAsync(f)">@(f.ValueCount > 0 ? "Arşivle" : "Sil")</button>
+                    }
+                }
+            </span>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public List<FieldDefinitionDto> Fields { get; set; } = [];
+    [Parameter] public bool CanEdit { get; set; }
+    [Parameter] public EventCallback<FieldDefinitionDto> OnEdit { get; set; }
+    [Parameter] public EventCallback<FieldDefinitionDto> OnRemove { get; set; }
+    [Parameter] public EventCallback<FieldDefinitionDto> OnRestore { get; set; }
+}

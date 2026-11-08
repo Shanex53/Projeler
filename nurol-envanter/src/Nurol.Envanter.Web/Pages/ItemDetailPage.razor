@@ -1,0 +1,187 @@
+@page "/envanter/{Id:guid}"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>@(item?.Tag ?? "Envanter") · Nurol Envanter</PageTitle>
+@if (error is not null && item is null) { <ErrorNote Error="error" /> }
+else if (item is null) { <div class="loading">Yükleniyor…</div> }
+else
+{
+    var canWrite = Session.CanWrite;
+    <div class="head">
+        <div class="t">
+            <div class="crumb"><a href="envanter">Envanter</a> / @item.CategoryName</div>
+            <h1 style="font-family:var(--mono)">@item.Tag</h1>
+            <p>@item.ManufacturerName @item.ModelName · <StatusPill Status="item.Status" /></p>
+        </div>
+        @if (canWrite)
+        {
+            @switch (item.Status)
+            {
+                case ItemStatus.InStock:
+                    <button class="btn" @onclick='() => Open("maintenance")'>Bakıma al</button>
+                    <button class="btn danger" @onclick='() => Open("retire")'>Kullanım dışı bırak</button>
+                    <a class="btn" href="envanter/@item.Id/duzenle">Düzenle</a>
+                    <a class="btn pri" href="zimmetler/yeni?cihaz=@item.Id">Zimmetle</a>
+                    break;
+                case ItemStatus.Assigned:
+                    <a class="btn" href="envanter/@item.Id/duzenle">Düzenle</a>
+                    <a class="btn" href="zimmetler/iade?personel=@item.EmployeeId&cihaz=@item.Id">İade al</a>
+                    <a class="btn pri" href="zimmetler/devir?personel=@item.EmployeeId&cihaz=@item.Id">Başka personele devret</a>
+                    break;
+                case ItemStatus.InMaintenance:
+                    <a class="btn" href="envanter/@item.Id/duzenle">Düzenle</a>
+                    <button class="btn pri" @onclick='() => Open("maintenance/end")'>Bakımdan döndü</button>
+                    break;
+                case ItemStatus.Retired:
+                    <button class="btn" @onclick='() => Open("reactivate")'>Tekrar kullanıma al</button>
+                    break;
+            }
+        }
+    </div>
+    @if (item.Status == ItemStatus.InMaintenance && item.MaintenanceNote is not null)
+    {
+        <div class="note warn"><b>Bakımda:</b> @item.MaintenanceNote</div>
+    }
+
+    <div class="grid g2">
+        <section class="card">
+            <div class="ch"><h2>Bilgiler</h2></div>
+            <div class="cb">
+                <dl class="kv">
+                    <dt>Envanter etiketi</dt><dd class="mono">@item.Tag</dd>
+                    <dt>Kategori</dt><dd>@item.CategoryName</dd>
+                    <dt>Marka / model</dt><dd>@item.ManufacturerName @item.ModelName</dd>
+                    <dt>Seri numarası</dt><dd class="mono">@(item.Serial ?? "—")</dd>
+                    <dt>Şirket</dt><dd>@item.CompanyName</dd>
+                    <dt>Depo / lokasyon</dt><dd>@item.WarehouseName · @(item.LocationName ?? "Lokasyon yok")</dd>
+                    <dt>Zimmetli personel</dt>
+                    <dd>
+                        @if (item.EmployeeId is not null)
+                        {
+                            <a href="personeller/@item.EmployeeId">@item.EmployeeName</a>
+                            @if (item.OpenAssignmentId is not null) { <span class="muted"> · <a href="zimmetler/@item.OpenAssignmentId">@item.OpenAssignmentNo</a></span> }
+                        }
+                        else { <span class="muted">Yok</span> }
+                    </dd>
+                    <dt>Maliyet</dt><dd class="num">@(item.Cost is null ? "Girilmemiş" : Fmt.Money(item.Cost))</dd>
+                    @if (item.Notes is not null) { <dt>Not</dt><dd>@item.Notes</dd> }
+                </dl>
+                @if (item.Fields.Count > 0)
+                {
+                    <div class="group-title">@item.CategoryName alanları <span class="tag custom">özel alan</span></div>
+                    <dl class="kv">
+                        @foreach (var f in item.Fields)
+                        {
+                            <dt>@f.Label @if (f.Archived) { <span class="tag">arşiv</span> }</dt>
+                            <dd class="@(f.Type == FieldType.Text ? "mono" : "")">@(string.IsNullOrEmpty(f.Value) ? "—" : Fmt.FieldDisplay(f.Type, f.Value))</dd>
+                        }
+                    </dl>
+                }
+            </div>
+        </section>
+        <div class="stack">
+            <section class="card">
+                <div class="ch"><h2>Evraklar</h2></div>
+                <div class="cb" style="padding-block:4px">
+                    @if (item.Documents.Count == 0) { <p class="muted">Bu cihaz için henüz zimmet evrakı yok. Zimmet yapıldığında tutanak burada görünür.</p> }
+                    @foreach (var doc in item.Documents)
+                    {
+                        <div class="doc-row">
+                            <div class="doc-ic @(doc.Kind == DocumentKind.Signed ? "ok" : "")">@Ext(doc.ContentType)</div>
+                            <div class="grow">
+                                <b>@(doc.Kind == DocumentKind.Signed ? $"İmzalı kopya · sürüm {doc.Version}" : "Üretilen tutanak")</b>
+                                <span class="muted" style="display:block;font-size:12px"><a href="zimmetler/@doc.AssignmentId">@doc.AssignmentNo</a> · @Fmt.DateTime(doc.At) · @doc.UserName</span>
+                            </div>
+                            <a class="btn sm" href="api/documents/@doc.Id" download>İndir</a>
+                        </div>
+                    }
+                </div>
+            </section>
+            <section class="card">
+                <div class="ch"><h2>Hareketler</h2></div>
+                <div class="cb">
+                    <ol class="timeline">
+                        @foreach (var h in item.History)
+                        {
+                            <li style="--accent:@Color(h.Type)">
+                                <b>@h.Text</b>
+                                <span class="muted" style="font-size:12.5px">@Fmt.DateTime(h.At) · @h.UserName @if (h.Reference is not null) { <span> · <span class="mono">@h.Reference</span></span> }</span>
+                            </li>
+                        }
+                    </ol>
+                </div>
+            </section>
+        </div>
+    </div>
+}
+
+@if (action is not null)
+{
+    <Modal Title="@ActionTitle" OnClose="() => action = null">
+        <ChildContent>
+            <form class="form" id="act" @onsubmit="Run">
+                <label class="fld @(error?.For("note") is not null ? "err" : "")" for="act-note">
+                    @(action is "maintenance/end" or "reactivate" ? "Açıklama (isteğe bağlı)" : "Açıklama")
+                    <textarea id="act-note" @bind="note" placeholder="@(action == "maintenance" ? "Arıza ve servis bilgisi" : "")"></textarea>
+                    @if (error?.For("note") is { } m) { <span class="err-msg">@m</span> }
+                </label>
+                @if (error is not null && error.For("note") is null) { <ErrorNote Error="error" /> }
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => action = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="act" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    ItemDetail? item;
+    ApiException? error;
+    string? action, note;
+    bool busy;
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    async Task Load()
+    {
+        try { item = await Api.Get<ItemDetail>($"api/items/{Id}"); error = null; }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    void Open(string a) { action = a; note = null; error = null; }
+
+    string ActionTitle => action switch
+    {
+        "maintenance" => "Bakıma al",
+        "maintenance/end" => "Bakımdan dönüş",
+        "retire" => "Kullanım dışı bırak",
+        "reactivate" => "Tekrar kullanıma al",
+        _ => ""
+    };
+
+    async Task Run()
+    {
+        busy = true;
+        try
+        {
+            await Api.Post($"api/items/{Id}/{action}", new MaintenanceRequest(note ?? "", item!.Version));
+            Toasts.Show(ActionTitle + " kaydedildi");
+            action = null;
+            await Load();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    static string Ext(string ct) => ct switch { "image/png" => "PNG", "image/jpeg" => "JPG", _ => "PDF" };
+    static string Color(string type) => type switch
+    {
+        "Zimmet" => "var(--accent)", "İade" => "var(--ok)", "Bakım" => "var(--warn)", "Kayıt" => "var(--ok)",
+        "Evrak" => "var(--move)", "Kullanım dışı" => "var(--muted)", _ => "var(--line)"
+    };
+}

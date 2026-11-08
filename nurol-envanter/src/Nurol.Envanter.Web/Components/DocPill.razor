@@ -1,0 +1,4 @@
+@if (Missing == true) { <span class="pill p-crit">İmzalı evrak eksik</span> }
+else if (Missing == false) { <span class="pill p-ok">İmzalı yüklendi</span> }
+else { <span class="muted">—</span> }
+@code { [Parameter] public bool? Missing { get; set; } }

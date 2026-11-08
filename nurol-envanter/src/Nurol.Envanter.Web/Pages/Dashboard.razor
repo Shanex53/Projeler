@@ -1,0 +1,109 @@
+@page "/"
+@inject Api Api
+@inject Session Session
+
+<PageTitle>Genel Bakış · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Genel Bakış</h1><p>@Fmt.Local(DateTimeOffset.UtcNow).ToString("d MMMM yyyy dddd, HH:mm", Fmt.Tr) (İstanbul)</p></div>
+    @if (Session.CanWrite)
+    {
+        <a class="btn" href="stok">Stok hareketi</a>
+        <a class="btn pri" href="zimmetler/yeni">+ Yeni zimmet</a>
+    }
+</div>
+
+@if (error is not null) { <ErrorNote Error="error" /> }
+else if (d is null) { <div class="loading">Yükleniyor…</div> }
+else
+{
+    <div class="kpis">
+        <a class="kpi" href="envanter"><span class="l">Tekil envanter</span><span class="v">@d.TotalItems.ToString("N0", Fmt.Tr)</span><span class="s">Kullanım dışılar hariç</span></a>
+        <a class="kpi" href="envanter?durum=InStock"><span class="l">Depoda</span><span class="v">@d.InStock.ToString("N0", Fmt.Tr)</span><span class="s">Zimmete hazır</span></a>
+        <a class="kpi" href="envanter?durum=Assigned"><span class="l">Zimmetli</span><span class="v">@d.Assigned.ToString("N0", Fmt.Tr)</span><span class="s">Personelde</span></a>
+        <a class="kpi" href="envanter?durum=InMaintenance"><span class="l">Bakımda</span><span class="v">@d.InMaintenance.ToString("N0", Fmt.Tr)</span><span class="s">Serviste veya onarımda</span></a>
+        <a class="kpi" href="stok"><span class="l">Kritik stok</span><span class="v">@d.LowStock.Count</span><span class="s">En az seviyenin altında</span></a>
+        <a class="kpi @(d.MissingSignedDocuments > 0 ? "alert" : "")" href="zimmetler?eksik=1"><span class="l">İmzalı evrak eksik</span><span class="v">@d.MissingSignedDocuments</span><span class="s">@(d.OldestMissingSince is { } o ? "En eskisi " + Fmt.Ago(o) : "Eksik evrak yok")</span></a>
+    </div>
+
+    <div class="grid g2">
+        <section class="card">
+            <div class="ch"><h2>Depolara göre tekil cihazlar</h2><span class="muted" style="font-size:12px">adet</span></div>
+            <div class="cb">
+                @if (d.Warehouses.Count == 0) { <p class="muted">Yetkili olduğunuz bir depo yok.</p> }
+                else
+                {
+                    var max = Math.Max(1, d.Warehouses.Max(w => w.InStock + w.Assigned + w.InMaintenance + w.InTransit));
+                    <div class="bars">
+                        @foreach (var w in d.Warehouses)
+                        {
+                            var t = w.InStock + w.Assigned + w.InMaintenance + w.InTransit;
+                            <div class="bar-row">
+                                <span>@w.Name</span>
+                                <div class="bar" role="img" aria-label="@($"{w.Name}: {w.InStock} depoda, {w.Assigned} zimmetli, {w.InMaintenance} bakımda")">
+                                    <i style="width:@Pct(w.InStock, max);background:var(--ok)"></i>
+                                    <i style="width:@Pct(w.Assigned, max);background:var(--accent)"></i>
+                                    <i style="width:@Pct(w.InMaintenance, max);background:var(--warn)"></i>
+                                    <i style="width:@Pct(w.InTransit, max);background:var(--move)"></i>
+                                </div>
+                                <b class="num right">@t</b>
+                            </div>
+                        }
+                    </div>
+                    <div class="legend"><span style="--c:var(--ok)">Depoda</span><span style="--c:var(--accent)">Zimmetli</span><span style="--c:var(--warn)">Bakımda</span><span style="--c:var(--move)">Transferde</span></div>
+                }
+            </div>
+        </section>
+        <section class="card">
+            <div class="ch"><h2>Kritik stok</h2><a class="btn sm" href="stok">Tümü</a></div>
+            <div class="cb" style="padding-block:4px">
+                @if (d.LowStock.Count == 0) { <p class="muted">Tüm malzemeler en az seviyenin üzerinde.</p> }
+                <ul class="feed">
+                    @foreach (var s in d.LowStock)
+                    {
+                        <li>
+                            <div class="ico num">@Fmt.Qty(s.Quantity)</div>
+                            <div><b>@s.Name</b><span class="muted" style="display:block;font-size:12px">@s.WarehouseName · en az @Fmt.Qty(s.MinLevel) @s.Unit</span></div>
+                            <span class="pill p-crit">@(s.Quantity == 0 ? "Tükendi" : "Kritik")</span>
+                        </li>
+                    }
+                </ul>
+            </div>
+        </section>
+    </div>
+
+    <section class="card">
+        <div class="ch"><h2>Son hareketler</h2></div>
+        <div class="tw">
+            <table>
+                <thead><tr><th>Zaman</th><th>Hareket</th><th>Kayıt</th><th>Detay</th><th>İşlemi yapan</th></tr></thead>
+                <tbody>
+                    @if (d.Activity.Count == 0) { <tr><td colspan="5" class="empty">Henüz hareket yok.</td></tr> }
+                    @foreach (var a in d.Activity)
+                    {
+                        <tr>
+                            <td class="num muted">@Fmt.DateTime(a.At)</td>
+                            <td><span class="pill @Cls(a.Type)">@a.Type</span></td>
+                            <td class="mono">@a.Reference</td>
+                            <td>@a.Text</td>
+                            <td>@a.UserName</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+}
+
+@code {
+    DashboardDto? d;
+    ApiException? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { d = await Api.Get<DashboardDto>("api/dashboard"); }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    static string Pct(int v, int max) => (v * 100.0 / max).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
+    static string Cls(string t) => t switch { "Zimmet" => "p-info", "İade" => "p-ok", "Giriş" => "p-ok", "Sarf çıkışı" => "p-mute", _ => "p-warn" };
+}

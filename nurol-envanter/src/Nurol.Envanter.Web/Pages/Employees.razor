@@ -1,0 +1,83 @@
+@page "/personeller"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>Personeller · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Personeller</h1><p>Personel kaydı giriş hesabından ayrıdır. Giriş hesabı olmayan personele de zimmet yapılabilir.</p></div>
+    @if (Session.CanWrite) { <button class="btn pri" @onclick="() => Edit(null)">+ Personel ekle</button> }
+</div>
+@if (result?.Items.Any(e => !e.IsActive && e.OpenItemCount > 0) == true)
+{
+    var list = result.Items.Where(e => !e.IsActive && e.OpenItemCount > 0).ToList();
+    <div class="note warn"><b>@string.Join(", ", list.Select(e => e.FullName))</b> pasif durumda ama üzerinde açık zimmet var. İade sürecini başlatın.</div>
+}
+
+<section class="card">
+    <div class="toolbar">
+        <form class="search" @onsubmit="Reload"><label class="sr" for="pq">Personel ara</label><input id="pq" @bind="q" placeholder="Ad, sicil no, birim veya e-posta" /></form>
+        <label class="check"><input type="checkbox" checked="@inactive" @onchange="e => { inactive = (bool)e.Value!; return Reload(); }" /> Pasifleri göster</label>
+        <label class="check"><input type="checkbox" checked="@withItems" @onchange="e => { withItems = (bool)e.Value!; return Reload(); }" /> Yalnızca zimmetli olanlar</label>
+    </div>
+    <div class="tw">
+        <table>
+            <thead><tr><th>Personel</th><th>Şirket / birim</th><th>Sicil</th><th>Kaynak</th><th class="right">Açık zimmet</th><th>Durum</th></tr></thead>
+            <tbody>
+                @if (result is null) { <tr><td colspan="6" class="empty">Yükleniyor…</td></tr> }
+                else if (result.Items.Count == 0) { <tr><td colspan="6" class="empty">Personel bulunamadı.</td></tr> }
+                else
+                {
+                    @foreach (var e in result.Items)
+                    {
+                        <tr class="click" @onclick='() => Nav.NavigateTo($"personeller/{e.Id}")'>
+                            <td><b>@e.FullName</b><span class="sub">@(e.Email ?? e.Title)</span></td>
+                            <td>@e.CompanyName<span class="sub">@e.Department</span></td>
+                            <td class="mono">@(e.RegistryNo ?? "—")</td>
+                            <td><span class="tag @(e.Source == EmployeeSource.Directory ? "info" : "")">@(e.Source == EmployeeSource.Directory ? "AD" : "Elle")</span></td>
+                            <td class="num right">@if (e.OpenItemCount > 0) { <b>@e.OpenItemCount</b> } else { <span class="muted">0</span> }</td>
+                            <td>@if (e.IsActive) { <span class="pill p-ok">Aktif</span> } else { <span class="pill @(e.OpenItemCount > 0 ? "p-crit" : "p-mute")">Pasif</span> }</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (result is not null) { <div class="toolbar foot"><span>@result.Total personel</span><Pager Page="result.Page" PageSize="result.PageSize" Total="result.Total" OnPage="Go" /></div> }
+</section>
+
+@if (form is not null)
+{
+    <EmployeeEditor Form="form" Companies="companies" OnClose="() => form = null" OnSaved="Saved" />
+}
+
+@code {
+    PagedResult<EmployeeDto>? result;
+    List<CompanyDto> companies = [];
+    EmployeeEditor.EmpForm? form;
+    string? q;
+    bool inactive, withItems;
+    int page = 1;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        try { companies = await Api.Get<List<CompanyDto>>("api/companies"); } catch (ApiException) { }
+    }
+
+    async Task Load()
+    {
+        var p = new List<string> { $"page={page}", "pageSize=100" };
+        if (!string.IsNullOrWhiteSpace(q)) p.Add("q=" + Uri.EscapeDataString(q.Trim()));
+        if (inactive) p.Add("includeInactive=true");
+        if (withItems) p.Add("withOpenItems=true");
+        try { result = await Api.Get<PagedResult<EmployeeDto>>("api/employees?" + string.Join("&", p)); }
+        catch (ApiException) { result = new([], 0, 1, 100); }
+    }
+
+    Task Reload() { page = 1; return Load(); }
+    Task Go(int p) { page = p; return Load(); }
+    void Edit(EmployeeDto? e) => form = EmployeeEditor.EmpForm.From(e, companies);
+    async Task Saved() { form = null; Toasts.Show("Personel kaydedildi"); await Load(); }
+}

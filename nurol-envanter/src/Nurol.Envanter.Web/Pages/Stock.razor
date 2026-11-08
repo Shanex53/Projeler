@@ -1,0 +1,258 @@
+@page "/stok"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+
+<PageTitle>Stok · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Stok</h1><p>Miktarla izlenen malzemeler. Bakiye eksiye düşemez; her hareket kayıt altındadır.</p></div>
+    @if (Session.CanWrite)
+    {
+        <button class="btn" @onclick="NewItem">+ Malzeme tanımla</button>
+        <button class="btn" @onclick="() => OpenMove(StockMovementType.In)">Stok girişi</button>
+        <button class="btn" @onclick="() => OpenMove(StockMovementType.Adjust)">Düzeltme</button>
+        <button class="btn pri" @onclick="() => OpenMove(StockMovementType.Out)">Sarf çıkışı</button>
+    }
+</div>
+@if (loadError is not null) { <ErrorNote Error="loadError" /> }
+
+<section class="card">
+    <div class="toolbar">
+        <form class="search" @onsubmit="Load"><label class="sr" for="sq">Malzeme ara</label><input id="sq" @bind="q" placeholder="Malzeme adı veya kodu" /></form>
+    </div>
+    <div class="tw">
+        <table>
+            <thead>
+                <tr><th>Malzeme</th><th>Birim</th>@foreach (var w in WarehouseColumns) { <th class="right">@w</th> }<th class="right">Toplam</th><th class="right">En az</th>@if (Session.CanWrite) { <th></th> }</tr>
+            </thead>
+            <tbody>
+                @if (items is null) { <tr><td colspan="9" class="empty">Yükleniyor…</td></tr> }
+                else if (items.Count == 0) { <tr><td colspan="9" class="empty">Malzeme tanımı yok. “Malzeme tanımla” ile ekleyin.</td></tr> }
+                else
+                {
+                    @foreach (var s in items)
+                    {
+                        <tr>
+                            <td><b>@s.Name</b><span class="sub mono">@s.Code</span></td>
+                            <td>@s.Unit</td>
+                            @foreach (var w in WarehouseColumns)
+                            {
+                                var b = s.Balances.FirstOrDefault(x => x.WarehouseName == w);
+                                <td class="num right">
+                                    @if (b is null) { <span class="muted">—</span> }
+                                    else if (s.MinLevel > 0 && b.Quantity < s.MinLevel) { <span class="pill p-crit">@Fmt.Qty(b.Quantity)</span> }
+                                    else { @Fmt.Qty(b.Quantity) }
+                                </td>
+                            }
+                            <td class="num right"><b>@Fmt.Qty(s.Total)</b></td>
+                            <td class="num right muted">@Fmt.Qty(s.MinLevel)</td>
+                            @if (Session.CanWrite) { <td><button class="btn sm" @onclick="() => EditItem(s)">Düzenle</button></td> }
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="toolbar foot">Kırmızı bakiyeler depo için tanımlı en az seviyenin altında.</div>
+</section>
+
+<section class="card">
+    <div class="ch"><h2>Son hareketler</h2></div>
+    <div class="tw">
+        <table>
+            <thead><tr><th>No / zaman</th><th>Hareket</th><th>Malzeme</th><th>Depo</th><th class="right">Miktar</th><th class="right">Kalan</th><th>Teslim alan / not</th><th>Yapan</th></tr></thead>
+            <tbody>
+                @if (moves is null || moves.Items.Count == 0) { <tr><td colspan="8" class="empty">Henüz hareket yok.</td></tr> }
+                else
+                {
+                    @foreach (var m in moves.Items)
+                    {
+                        <tr>
+                            <td class="mono">@m.No<span class="sub">@Fmt.DateTime(m.At)</span></td>
+                            <td><span class="pill @(m.Type switch { StockMovementType.In => "p-ok", StockMovementType.Out => "p-info", _ => "p-warn" })">@Labels.Movement(m.Type)</span></td>
+                            <td>@m.StockItemName</td>
+                            <td>@m.WarehouseName</td>
+                            <td class="num right">@(m.Quantity > 0 ? "+" : "")@Fmt.Qty(m.Quantity) @m.Unit</td>
+                            <td class="num right">@Fmt.Qty(m.BalanceAfter)</td>
+                            <td>@(m.EmployeeName ?? m.Project)<span class="sub">@m.Note</span></td>
+                            <td>@m.UserName</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (moves is not null) { <div class="toolbar foot"><span>@moves.Total hareket</span><Pager Page="moves.Page" PageSize="moves.PageSize" Total="moves.Total" OnPage="MovesPage" /></div> }
+</section>
+
+@if (move is not null)
+{
+    <Modal Title="@Labels.Movement(move.Type)" OnClose="() => move = null">
+        <ChildContent>
+            <form class="form" id="mv" @onsubmit="SaveMove">
+                <label class="fld" for="mv-item">Malzeme
+                    <select id="mv-item" value="@move.ItemId" @onchange="e => move.ItemId = G(e.Value)">
+                        <option value="">Seçin</option>
+                        @foreach (var s in items ?? []) { <option value="@s.Id">@s.Name (@s.Unit)</option> }
+                    </select>
+                </label>
+                <label class="fld" for="mv-wh">Depo
+                    <select id="mv-wh" value="@move.WarehouseId" @onchange="e => move.WarehouseId = G(e.Value)">
+                        <option value="">Seçin</option>
+                        @foreach (var w in MoveWarehouses) { <option value="@w.WarehouseId">@w.WarehouseName (bakiye @Fmt.Qty(w.Quantity))</option> }
+                    </select>
+                </label>
+                <label class="fld @(error?.For("quantity") is not null || (error is not null && error.Status == 409) ? "err" : "")" for="mv-qty">
+                    @(move.Type == StockMovementType.Adjust ? "Miktar farkı (eksiltmek için eksi girin)" : "Miktar") @(SelUnit is null ? "" : $"({SelUnit})")
+                    <input id="mv-qty" inputmode="decimal" @bind="move.Qty" />
+                    @if (error is not null && (error.For("quantity") is not null || error.Status == 409)) { <span class="err-msg">@(error.For("quantity") ?? error.Message)</span> }
+                </label>
+                @if (move.Type == StockMovementType.Out)
+                {
+                    <label class="fld @(error?.For("employee") is not null ? "err" : "")" for="mv-emp">Teslim alan personel
+                        <select id="mv-emp" value="@move.EmployeeId" @onchange="e => move.EmployeeId = G(e.Value)">
+                            <option value="">Personel yok (projeye çıkış)</option>
+                            @foreach (var e in employees.Where(e => e.IsActive && (SelCompany is null || e.CompanyId == SelCompany))) { <option value="@e.Id">@e.FullName · @e.Department</option> }
+                        </select>
+                        @if (error?.For("employee") is { } ee) { <span class="err-msg">@ee</span> }
+                    </label>
+                    <label class="fld" for="mv-prj">Proje / birim<input id="mv-prj" @bind="move.Project" placeholder="Personel seçmediyseniz zorunlu" /></label>
+                }
+                <label class="fld @(error?.For("note") is not null ? "err" : "")" for="mv-note">Açıklama @(move.Type == StockMovementType.Adjust ? "(zorunlu)" : "")
+                    <input id="mv-note" @bind="move.Note" />
+                    @if (error?.For("note") is { } en) { <span class="err-msg">@en</span> }
+                </label>
+                @if (move.Type == StockMovementType.Out) { <p class="note" style="margin:0">Sarf çıkışı zimmet değildir; personelin açık zimmet listesine girmez, sarf geçmişinde görünür.</p> }
+                @if (error is not null && error.Errors.Count == 0 && error.Status != 409) { <ErrorNote Error="error" /> }
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => move = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="mv" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@if (edit is not null)
+{
+    <Modal Title="@(edit.Id is null ? "Malzeme tanımla" : "Malzemeyi düzenle")" OnClose="() => edit = null">
+        <ChildContent>
+            <form class="form two" id="st" @onsubmit="SaveItem">
+                <label class="fld" for="st-co">Şirket
+                    <select id="st-co" value="@edit.CompanyId" disabled="@(edit.Id is not null)" @onchange="e => edit.CompanyId = G(e.Value)">
+                        <option value="">Seçin</option>
+                        @foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }
+                    </select>
+                </label>
+                <label class="fld" for="st-code">Kod<input id="st-code" @bind="edit.Code" placeholder="SRF-KBL-001" /></label>
+                <label class="fld full" for="st-name">Ad<input id="st-name" @bind="edit.Name" /></label>
+                <label class="fld" for="st-unit">Birim<input id="st-unit" @bind="edit.Unit" placeholder="adet, metre, kutu" /></label>
+                <label class="fld" for="st-min">En az seviye (depo başına)<input id="st-min" inputmode="decimal" @bind="edit.Min" /></label>
+                <div class="full"><ErrorNote Error="error" /></div>
+            </form>
+        </ChildContent>
+        <Footer>
+            @if (edit.Id is not null) { <button class="btn danger" @onclick="ArchiveItem">Arşivle</button> }
+            <button class="btn" @onclick="() => edit = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="st" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    class MoveForm { public StockMovementType Type; public Guid? ItemId, WarehouseId, EmployeeId; public string? Qty, Project, Note; public string Key = Guid.NewGuid().ToString("N"); }
+    class ItemForm { public Guid? Id, CompanyId; public string? Code, Name, Unit = "adet", Min = "0"; }
+
+    List<StockItemDto>? items;
+    PagedResult<StockMovementDto>? moves;
+    List<EmployeeDto> employees = [];
+    List<CompanyDto> companies = [];
+    MoveForm? move;
+    ItemForm? edit;
+    ApiException? error, loadError;
+    string? q;
+    bool busy;
+    int movesPage = 1;
+
+    IEnumerable<string> WarehouseColumns => (items ?? []).SelectMany(s => s.Balances.Select(b => b.WarehouseName)).Distinct().OrderBy(x => x);
+    StockItemDto? SelItem => items?.FirstOrDefault(s => s.Id == move?.ItemId);
+    string? SelUnit => SelItem?.Unit;
+    Guid? SelCompany => SelItem?.CompanyId;
+    IEnumerable<StockBalanceDto> MoveWarehouses => SelItem?.Balances ?? [];
+    static Guid? G(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await Load();
+        await LoadMoves();
+        try
+        {
+            employees = (await Api.Get<PagedResult<EmployeeDto>>("api/employees?pageSize=500")).Items.ToList();
+            companies = await Api.Get<List<CompanyDto>>("api/companies");
+        }
+        catch (ApiException) { }
+    }
+
+    async Task Load()
+    {
+        try { items = await Api.Get<List<StockItemDto>>("api/stock" + (string.IsNullOrWhiteSpace(q) ? "" : "?q=" + Uri.EscapeDataString(q))); loadError = null; }
+        catch (ApiException ex) { loadError = ex; items = []; }
+    }
+
+    async Task LoadMoves()
+    {
+        try { moves = await Api.Get<PagedResult<StockMovementDto>>($"api/stock/movements?page={movesPage}&pageSize=20"); }
+        catch (ApiException ex) { loadError = ex; }
+    }
+
+    Task MovesPage(int p) { movesPage = p; return LoadMoves(); }
+
+    void OpenMove(StockMovementType t) { move = new MoveForm { Type = t }; error = null; }
+    void NewItem() { edit = new ItemForm { CompanyId = companies.Count == 1 ? companies[0].Id : null }; error = null; }
+    void EditItem(StockItemDto s) { edit = new ItemForm { Id = s.Id, CompanyId = s.CompanyId, Code = s.Code, Name = s.Name, Unit = s.Unit, Min = Fmt.Qty(s.MinLevel) }; error = null; }
+
+    async Task SaveMove()
+    {
+        error = null;
+        if (move!.ItemId is null || move.WarehouseId is null) { error = new ApiException("Malzeme ve depo seçin."); return; }
+        if (!decimal.TryParse(move.Qty, System.Globalization.NumberStyles.Number, Fmt.Tr, out var qty))
+        { error = new ApiException("Geçerli bir miktar girin.", new() { ["quantity"] = "Geçerli bir miktar girin." }); return; }
+        busy = true;
+        try
+        {
+            var r = await Api.Post<StockMovementDto>("api/stock/movements",
+                new StockMovementRequest(move.ItemId.Value, move.WarehouseId.Value, move.Type, qty, move.EmployeeId, move.Project, move.Note), move.Key);
+            Toasts.Show($"{r.No} kaydedildi. Kalan: {Fmt.Qty(r.BalanceAfter)} {r.Unit}");
+            move = null;
+            await Load();
+            movesPage = 1;
+            await LoadMoves();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task SaveItem()
+    {
+        error = null;
+        if (edit!.CompanyId is null) { error = new ApiException("Şirket seçin."); return; }
+        if (!decimal.TryParse(edit.Min, System.Globalization.NumberStyles.Number, Fmt.Tr, out var min)) { error = new ApiException("En az seviye geçerli bir sayı olmalıdır."); return; }
+        busy = true;
+        try
+        {
+            var body = new StockItemSave(edit.CompanyId.Value, edit.Code ?? "", edit.Name ?? "", edit.Unit ?? "", min);
+            if (edit.Id is Guid id) await Api.Put($"api/stock/{id}", body); else await Api.Post("api/stock", body);
+            Toasts.Show("Malzeme kaydedildi");
+            edit = null;
+            await Load();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task ArchiveItem()
+    {
+        try { await Api.Post($"api/stock/{edit!.Id}/archive"); Toasts.Show("Malzeme arşivlendi"); edit = null; await Load(); }
+        catch (ApiException ex) { error = ex; }
+    }
+}

@@ -1,0 +1,168 @@
+@page "/envanter/yeni"
+@page "/envanter/{Id:guid}/duzenle"
+@inject Api Api
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>@(Id is null ? "Envanter ekle" : "Envanter düzenle") · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t">
+        <div class="crumb"><a href="envanter">Envanter</a> / @(existing?.Tag ?? "Yeni kayıt")</div>
+        <h1>@(Id is null ? "Envanter ekle" : "Envanter düzenle")</h1>
+        <p>@(Id is null ? "Envanter etiketi kayıt sırasında şirket ve kategori koduna göre otomatik verilir." : "Depo değişikliği transfer ile yapılır (2. aşama). Kategori etikete bağlı olduğu için değiştirilemez.")</p>
+    </div>
+</div>
+
+@if (loading) { <div class="loading">Yükleniyor…</div> }
+else
+{
+    <form class="card" @onsubmit="Save">
+        <div class="cb">
+            <div class="form two">
+                <label class="fld" for="e-cat">Kategori
+                    <select id="e-cat" value="@categoryId" disabled="@(Id is not null)" @onchange="e => CategoryChanged(e.Value)">
+                        <option value="">Seçin</option>
+                        @foreach (var c in categories) { <option value="@c.Id">@c.Name (@c.Code)</option> }
+                    </select>
+                </label>
+                <label class="fld @(Err("model") is not null ? "err" : "")" for="e-model">Marka / model
+                    <select id="e-model" value="@modelId" disabled="@(categoryId is null)" @onchange="e => ModelChanged(e.Value)">
+                        <option value="">@(categoryId is null ? "Önce kategori seçin" : "Seçin")</option>
+                        @foreach (var m in models) { <option value="@m.Id">@m.ManufacturerName @m.Name</option> }
+                    </select>
+                    @if (Err("model") is { } em) { <span class="err-msg">@em</span> }
+                    else if (categoryId is not null && models.Count == 0) { <span class="help">Bu kategoride model yok. <a href="kategoriler">Kategoriler ve Alanlar</a> sayfasından ekleyin.</span> }
+                </label>
+                <label class="fld @(Err("warehouse") is not null ? "err" : "")" for="e-wh">Depo
+                    <select id="e-wh" value="@warehouseId" disabled="@(Id is not null)" @onchange="e => { warehouseId = G(e.Value); locationId = null; }">
+                        <option value="">Seçin</option>
+                        @foreach (var w in warehouses) { <option value="@w.Id">@w.Name · @w.CompanyName</option> }
+                    </select>
+                    @if (Err("warehouse") is { } ew) { <span class="err-msg">@ew</span> }
+                </label>
+                <label class="fld @(Err("location") is not null ? "err" : "")" for="e-loc">Lokasyon
+                    <select id="e-loc" value="@locationId" @onchange="e => locationId = G(e.Value)">
+                        <option value="">Belirtilmedi</option>
+                        @foreach (var l in Locations) { <option value="@l.Id">@l.Name</option> }
+                    </select>
+                </label>
+                <label class="fld @(Err("serial") is not null ? "err" : "")" for="e-serial">Seri numarası @if (RequiresSerial) { <span class="err-msg">*</span> }
+                    <input id="e-serial" @bind="serial" class="mono" />
+                    @if (Err("serial") is { } es) { <span class="err-msg">@es</span> }
+                    else { <span class="help">Aynı markada grup genelinde benzersiz olmalıdır.</span> }
+                </label>
+                <label class="fld" for="e-cost">Maliyet (₺, isteğe bağlı)
+                    <input id="e-cost" inputmode="decimal" @bind="costText" />
+                    <span class="help">Değer raporlarında kullanılır; satın alma süreci yoktur.</span>
+                </label>
+                @if (fields.Count > 0)
+                {
+                    <div class="group-title full" style="margin-bottom:0">Kategori ve model alanları</div>
+                    @foreach (var f in fields)
+                    {
+                        var fid = f.Id;
+                        <FieldInput Field="f" Value="@values.GetValueOrDefault(fid)" ValueChanged="v => values[fid] = v" Error="@Err(fid.ToString())" />
+                    }
+                }
+                <label class="fld full" for="e-notes">Not<textarea id="e-notes" @bind="notes"></textarea></label>
+            </div>
+        </div>
+        @if (error is not null) { <div class="cb" style="padding-top:0"><ErrorNote Error="error" ShowList="false" /></div> }
+        <div class="toolbar foot" style="justify-content:flex-end">
+            <a class="btn" href="@(Id is null ? "envanter" : $"envanter/{Id}")">Vazgeç</a>
+            <button class="btn pri" type="submit" disabled="@busy">@(busy ? "Kaydediliyor…" : "Kaydet")</button>
+        </div>
+    </form>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+    ItemDetail? existing;
+    List<CategoryDto> categories = [];
+    List<AssetModelDto> models = [];
+    List<WarehouseDto> warehouses = [];
+    List<FieldDefinitionDto> fields = [];
+    Dictionary<Guid, string?> values = [];
+    Guid? categoryId, modelId, warehouseId, locationId;
+    string? serial, costText, notes;
+    bool loading = true, busy;
+    ApiException? error;
+
+    IEnumerable<LocationDto> Locations => warehouses.FirstOrDefault(w => w.Id == warehouseId)?.Locations ?? [];
+    bool RequiresSerial => categories.FirstOrDefault(c => c.Id == categoryId)?.RequiresSerial == true;
+    string? Err(string key) => error?.For(key);
+    static Guid? G(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            categories = await Api.Get<List<CategoryDto>>("api/categories");
+            warehouses = await Api.Get<List<WarehouseDto>>("api/warehouses");
+            if (Id is Guid id)
+            {
+                existing = await Api.Get<ItemDetail>($"api/items/{id}");
+                categoryId = existing.CategoryId; modelId = existing.AssetModelId; warehouseId = existing.WarehouseId;
+                locationId = existing.LocationId; serial = existing.Serial; notes = existing.Notes;
+                costText = existing.Cost?.ToString("0.##", Fmt.Tr);
+                models = await Api.Get<List<AssetModelDto>>($"api/models?categoryId={categoryId}");
+                await LoadFields();
+                foreach (var f in existing.Fields.Where(f => !f.Archived)) values[f.FieldId] = f.Value;
+            }
+            else if (warehouses.Count == 1) warehouseId = warehouses[0].Id;
+        }
+        catch (ApiException ex) { error = ex; }
+        loading = false;
+    }
+
+    async Task CategoryChanged(object? v)
+    {
+        categoryId = G(v); modelId = null; fields = []; models = [];
+        if (categoryId is not null) models = await Api.Get<List<AssetModelDto>>($"api/models?categoryId={categoryId}");
+        await LoadFields();
+    }
+
+    async Task ModelChanged(object? v) { modelId = G(v); await LoadFields(); }
+
+    async Task LoadFields()
+    {
+        if (categoryId is null) { fields = []; return; }
+        var url = $"api/fields?categoryId={categoryId}" + (modelId is null ? "" : $"&modelId={modelId}");
+        fields = await Api.Get<List<FieldDefinitionDto>>(url);
+    }
+
+    async Task Save()
+    {
+        error = null;
+        decimal? cost = null;
+        if (!string.IsNullOrWhiteSpace(costText))
+        {
+            if (decimal.TryParse(costText, System.Globalization.NumberStyles.Number, Fmt.Tr, out var c)) cost = c;
+            else { error = new ApiException("Maliyet geçerli bir sayı olmalıdır (ör. 18.450,00)."); return; }
+        }
+        if (modelId is null) { error = new ApiException("Model seçin.", new() { ["model"] = "Model seçin." }); return; }
+        if (warehouseId is null) { error = new ApiException("Depo seçin.", new() { ["warehouse"] = "Depo seçin." }); return; }
+        busy = true;
+        try
+        {
+            var body = new ItemSave(modelId.Value, warehouseId.Value, locationId, serial, cost, notes,
+                fields.ToDictionary(f => f.Id, f => values.GetValueOrDefault(f.Id)), existing?.Version);
+            if (Id is Guid id)
+            {
+                await Api.Put($"api/items/{id}", body);
+                Toasts.Show("Değişiklikler kaydedildi");
+                Nav.NavigateTo($"envanter/{id}");
+            }
+            else
+            {
+                var res = await Api.Post<CreatedItem>("api/items", body);
+                Toasts.Show($"{res.Tag} etiketiyle kaydedildi");
+                Nav.NavigateTo($"envanter/{res.Id}");
+            }
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    record CreatedItem(Guid Id, string Tag);
+}

@@ -1,0 +1,238 @@
+@page "/zimmetler/yeni"
+@page "/zimmetler/iade"
+@page "/zimmetler/devir"
+@inject Api Api
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>@Title · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t">
+        <div class="crumb"><a href="zimmetler">Zimmetler</a> / @Title</div>
+        <h1>@Title</h1>
+        <p>@Intro</p>
+    </div>
+</div>
+
+<div class="grid g2e">
+    <section class="card">
+        <div class="ch"><h2>1. @(mode == "yeni" ? "Teslim alan personel" : "Cihazları teslim eden personel")</h2></div>
+        <div class="cb stack">
+            <EmployeePicker Employees="employees" Selected="employeeId" SelectedChanged="EmployeeChanged" OnlyWithItems="@(mode != "yeni")" />
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="ch">
+            <h2>2. Cihazlar</h2>
+            @if (mode == "yeni")
+            {
+                <select class="sel-in" aria-label="Depo" value="@warehouseId" @onchange="e => WarehouseChanged(e.Value)">
+                    <option value="">Depo seçin</option>
+                    @foreach (var w in warehouses.Where(w => selectedEmp is null || w.CompanyId == selectedEmp.CompanyId)) { <option value="@w.Id">@w.Name</option> }
+                </select>
+            }
+        </div>
+        <div class="cb stack">
+            @if (mode == "yeni")
+            {
+                @if (selectedEmp is null) { <p class="muted">Önce personeli seçin. Yalnızca personelin şirketine ait depolardaki cihazlar zimmetlenebilir.</p> }
+                else if (warehouseId is null) { <p class="muted">Cihazların bulunduğu depoyu seçin. Bir tutanaktaki cihazlar aynı depodan olmalıdır.</p> }
+                else
+                {
+                    <div class="row"><div class="search" style="flex:1"><label class="sr" for="iq">Cihaz ara</label><input id="iq" @bind="itemQ" @bind:after="LoadAvailable" placeholder="Etiket, seri no, model veya IMEI" /></div><button type="button" class="btn sm" @onclick="LoadAvailable">Ara</button></div>
+                }
+            }
+            else if (employeeId is null) { <p class="muted">Önce personeli seçin; üzerindeki cihazlar listelenir.</p> }
+
+            @if (candidates is not null)
+            {
+                @if (candidates.Count == 0) { <p class="muted">@(mode == "yeni" ? "Bu depoda zimmete hazır cihaz bulunamadı." : "Bu personelin üzerinde zimmetli cihaz yok.")</p> }
+                else
+                {
+                    <div class="pick">
+                        @foreach (var c in candidates)
+                        {
+                            var on = selected.Contains(c.Id);
+                            <label class="@(on ? "on" : "")">
+                                <input type="checkbox" checked="@on" @onchange="e => Toggle(c.Id, (bool)e.Value!)" />
+                                <span><b class="mono">@c.Tag</b><span class="sub muted" style="display:block;font-size:12px">@c.ManufacturerName @c.ModelName · @(c.Serial ?? "seri no yok") · @c.WarehouseName</span></span>
+                                <StatusPill Status="c.Status" />
+                            </label>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </section>
+
+    @if (mode == "devir")
+    {
+        <section class="card">
+            <div class="ch"><h2>3. Devralacak personel</h2></div>
+            <div class="cb stack">
+                <EmployeePicker Employees="@(employees.Where(e => e.Id != employeeId && (selectedEmp is null || e.CompanyId == selectedEmp.CompanyId)).ToList())" Selected="toEmployeeId" SelectedChanged="v => toEmployeeId = v" />
+                <p class="muted" style="margin:0">Devir aynı şirket içinde yapılır. Önce iade tutanağı, ardından yeni zimmet tutanağı üretilir.</p>
+            </div>
+        </section>
+    }
+
+    <section class="card" style="@(mode == "devir" ? "" : "grid-column:1 / -1")">
+        <div class="ch"><h2>@(mode == "devir" ? "4" : "3"). Durum ve açıklama</h2></div>
+        <div class="cb form">
+            @if (selected.Count == 0) { <p class="muted" style="margin:0">Seçilen cihaz yok.</p> }
+            @foreach (var id in selected)
+            {
+                var c = candidates?.FirstOrDefault(x => x.Id == id);
+                if (c is null) continue;
+                var key = id;
+                <label class="fld" for="@($"cond-{id:N}")"><span class="mono">@c.Tag</span> durum notu
+                    <input id="@($"cond-{id:N}")" value="@conditions.GetValueOrDefault(key)" @onchange="e => conditions[key] = e.Value?.ToString() ?? string.Empty" placeholder="@(mode == "iade" ? "Ör. sağlam, şarj aleti eksik" : "Ör. sağlam, kutulu")" />
+                </label>
+            }
+            @if (mode == "iade" && warehouseId is not null && Locations.Any())
+            {
+                <label class="fld" for="ret-loc">Depoda konacağı lokasyon
+                    <select id="ret-loc" value="@locationId" @onchange="e => locationId = G(e.Value)">
+                        <option value="">Değiştirme</option>
+                        @foreach (var l in Locations) { <option value="@l.Id">@l.Name</option> }
+                    </select>
+                </label>
+            }
+            <label class="fld" for="z-note">Açıklama (tutanağa yazılır)<textarea id="z-note" @bind="note"></textarea></label>
+            <ErrorNote Error="error" />
+            <div class="row" style="justify-content:flex-end">
+                <a class="btn" href="zimmetler">Vazgeç</a>
+                <button class="btn pri" type="button" @onclick="Submit" disabled="@(busy || !CanSubmit)">@(busy ? "Kaydediliyor…" : SubmitLabel)</button>
+            </div>
+            <p class="muted" style="margin:0;font-size:12.5px">Kaydettikten sonra A4 tutanak PDF olarak üretilir. Islak imzalı taramayı tutanak sayfasından yükleyebilirsiniz.</p>
+        </div>
+    </section>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "personel")] public Guid? PersonelQ { get; set; }
+    [SupplyParameterFromQuery(Name = "cihaz")] public Guid? CihazQ { get; set; }
+
+    string mode = "yeni";
+    List<EmployeeDto> employees = [];
+    List<WarehouseDto> warehouses = [];
+    List<ItemListRow>? candidates;
+    HashSet<Guid> selected = [];
+    Dictionary<Guid, string> conditions = [];
+    Guid? employeeId, toEmployeeId, warehouseId, locationId;
+    EmployeeDto? selectedEmp;
+    string? itemQ, note;
+    bool busy;
+    ApiException? error;
+    // Aynı formun iki kez gönderilmesi mükerrer tutanak üretmesin.
+    readonly string idempotencyKey = Guid.NewGuid().ToString("N");
+
+    string Title => mode switch { "iade" => "İade al", "devir" => "Başka personele devret", _ => "Yeni zimmet" };
+    string Intro => mode switch
+    {
+        "iade" => "Personelin üzerindeki cihazları depoya geri alın. İade tutanağı üretilir; ilk zimmetin imzalı belgesi korunur.",
+        "devir" => "Cihazları bir personelden diğerine aktarın. İade ve yeni zimmet tutanakları birlikte üretilir.",
+        _ => "Bir veya birden çok cihazı aynı şirketin personeline zimmetleyin."
+    };
+    string SubmitLabel => mode switch { "iade" => $"{selected.Count} cihazı iade al", "devir" => $"{selected.Count} cihazı devret", _ => $"{selected.Count} cihazı zimmetle" };
+    bool CanSubmit => employeeId is not null && selected.Count > 0 && (mode != "devir" || toEmployeeId is not null);
+    IEnumerable<LocationDto> Locations => warehouses.FirstOrDefault(w => w.Id == warehouseId)?.Locations ?? [];
+    static Guid? G(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri).Split('?')[0];
+        mode = path.EndsWith("iade") ? "iade" : path.EndsWith("devir") ? "devir" : "yeni";
+        try
+        {
+            employees = (await Api.Get<PagedResult<EmployeeDto>>("api/employees?pageSize=500")).Items.ToList();
+            warehouses = await Api.Get<List<WarehouseDto>>("api/warehouses");
+            if (mode == "yeni" && CihazQ is Guid item)
+            {
+                var d = await Api.Get<ItemDetail>($"api/items/{item}");
+                warehouseId = d.WarehouseId;
+                selected.Add(item);
+            }
+            if (PersonelQ is Guid p) await EmployeeChanged(p);
+            if (mode != "yeni" && CihazQ is Guid c && candidates?.Any(x => x.Id == c) == true) Toggle(c, true);
+            if (mode == "yeni" && warehouseId is not null && selectedEmp is not null) await LoadAvailable();
+        }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task EmployeeChanged(Guid? id)
+    {
+        employeeId = id;
+        selectedEmp = employees.FirstOrDefault(e => e.Id == id);
+        error = null;
+        if (mode == "yeni")
+        {
+            if (selectedEmp is not null && warehouseId is not null && warehouses.FirstOrDefault(w => w.Id == warehouseId)?.CompanyId != selectedEmp.CompanyId)
+            { warehouseId = null; candidates = null; selected.Clear(); }
+            if (selectedEmp is not null && warehouseId is null)
+            {
+                var own = warehouses.Where(w => w.CompanyId == selectedEmp.CompanyId).ToList();
+                if (own.Count == 1) warehouseId = own[0].Id;
+            }
+            if (warehouseId is not null && selectedEmp is not null) await LoadAvailable();
+            return;
+        }
+        selected.Clear();
+        candidates = null;
+        if (id is null) return;
+        var d = await Api.Get<EmployeeDetail>($"api/employees/{id}");
+        candidates = d.OpenItems.ToList();
+        warehouseId = candidates.Select(c => (Guid?)c.WarehouseId).FirstOrDefault();
+    }
+
+    async Task WarehouseChanged(object? v)
+    {
+        warehouseId = G(v);
+        selected.Clear();
+        candidates = null;
+        if (warehouseId is not null) await LoadAvailable();
+    }
+
+    async Task LoadAvailable()
+    {
+        if (warehouseId is null) return;
+        var url = $"api/items?status=InStock&warehouseId={warehouseId}&pageSize=200" + (string.IsNullOrWhiteSpace(itemQ) ? "" : "&q=" + Uri.EscapeDataString(itemQ.Trim()));
+        var res = await Api.Get<PagedResult<ItemListRow>>(url);
+        // Seçili olup aramada görünmeyenleri listede tut.
+        var keep = candidates?.Where(c => selected.Contains(c.Id) && res.Items.All(r => r.Id != c.Id)) ?? [];
+        candidates = keep.Concat(res.Items).ToList();
+        selected.RemoveWhere(id => candidates.All(c => c.Id != id));
+    }
+
+    void Toggle(Guid id, bool on)
+    {
+        if (on) selected.Add(id); else selected.Remove(id);
+        if (mode != "yeni")
+        {
+            // İade/devir tutanağı tek depoya ait olmalı.
+            var first = candidates?.FirstOrDefault(c => selected.Contains(c.Id));
+            if (first is not null) warehouseId = first.WarehouseId;
+        }
+    }
+
+    async Task Submit()
+    {
+        if (!CanSubmit) return;
+        busy = true; error = null;
+        var notes = conditions.Where(c => selected.Contains(c.Key) && !string.IsNullOrWhiteSpace(c.Value)).ToDictionary(c => c.Key, c => c.Value);
+        try
+        {
+            AssignmentDetail res = mode switch
+            {
+                "iade" => await Api.Post<AssignmentDetail>("api/assignments/return", new AssignmentReturn(employeeId!.Value, selected.ToList(), null, locationId, notes, note), idempotencyKey),
+                "devir" => await Api.Post<AssignmentDetail>("api/assignments/handover", new { fromEmployeeId = employeeId, toEmployeeId, itemIds = selected.ToList(), note }, idempotencyKey),
+                _ => await Api.Post<AssignmentDetail>("api/assignments", new AssignmentCreate(employeeId!.Value, selected.ToList(), notes, note), idempotencyKey)
+            };
+            Toasts.Show($"{res.Header.No} tutanağı oluşturuldu");
+            Nav.NavigateTo($"zimmetler/{res.Header.Id}");
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

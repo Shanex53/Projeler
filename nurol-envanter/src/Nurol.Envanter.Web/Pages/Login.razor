@@ -1,0 +1,50 @@
+@page "/giris"
+@layout BlankLayout
+@inject Api Api
+@inject Session Session
+@inject NavigationManager Nav
+
+<PageTitle>Giriş · Nurol Envanter</PageTitle>
+<div class="login">
+    <div class="login-art">
+        <div class="brand"><div class="brand-mark">NE</div><div><b>Nurol Envanter</b><small>Demirbaş · Stok · Zimmet</small></div></div>
+        <div><h1>Depodan personele, her cihazın kaydı tek yerde.</h1><p>Zimmet tutanağını üretin, imzalı kopyayı yükleyin, stok hareketlerini eksiye düşmeden izleyin.</p></div>
+        <div class="login-grid"></div>
+        <span style="font-size:12px;color:var(--nav-fg)">Yetkili personel içindir. Tüm işlemler kayıt altına alınır.</span>
+    </div>
+    <div class="login-form">
+        <form class="login-box form" @onsubmit="Submit">
+            <div><h1>Giriş yap</h1><p class="muted" style="margin:4px 0 0">Hesap türünüzü seçin.</p></div>
+            <div class="seg" role="tablist">
+                <button type="button" class="on" role="tab" aria-selected="true">Yerel hesap</button>
+                <button type="button" disabled title="2. aşamada" role="tab" aria-selected="false">Kurum hesabı (AD)</button>
+            </div>
+            <label class="fld" for="lu">Kullanıcı adı<input id="lu" @bind="user" autocomplete="username" autofocus /></label>
+            <label class="fld" for="lp">Parola<input id="lp" type="password" @bind="pass" autocomplete="current-password" /></label>
+            @if (error is not null) { <div class="note error" role="alert">@error</div> }
+            <p class="note">Yerel hesaplar yönetici tarafından oluşturulur. Kurum (AD) hesabıyla giriş 2. aşamada açılacak. Parolanızı unuttuysanız yöneticinize başvurun.</p>
+            <button class="btn pri" type="submit" style="padding:10px" disabled="@busy">@(busy ? "Giriş yapılıyor…" : "Giriş yap")</button>
+        </form>
+    </div>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "donus")] public string? Return { get; set; }
+    string user = "", pass = "";
+    string? error;
+    bool busy;
+
+    async Task Submit()
+    {
+        busy = true; error = null;
+        try
+        {
+            var me = await Api.Post<MeDto>("api/auth/login", new LoginRequest(user, pass));
+            Session.Set(me);
+            var target = Return is { Length: > 0 } r && !r.StartsWith("giris") && !r.Contains("://") ? r : "";
+            Nav.NavigateTo(target);
+        }
+        catch (ApiException ex) { error = ex.Message; pass = ""; }
+        finally { busy = false; }
+    }
+}

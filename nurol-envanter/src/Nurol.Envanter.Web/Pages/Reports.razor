@@ -1,0 +1,14 @@
+@page "/raporlar"
+
+<PageTitle>Raporlar · Nurol Envanter</PageTitle>
+<div class="head"><div class="t"><h1>Raporlar</h1><p>Rapor ekranları 3. aşamada gelecek. Bugün kullanılabilen hazır listeler aşağıda.</p></div></div>
+
+<div class="tree">
+    <section class="card wh"><h2>Envanter dökümü</h2><p class="muted" style="margin:0">Filtrelenmiş envanter listesi, özel alanlarıyla birlikte CSV olarak (Excel'de açılır).</p><a class="btn sm" style="align-self:flex-start" href="envanter">Envantere git</a></section>
+    <section class="card wh"><h2>Eksik imzalı evrak</h2><p class="muted" style="margin:0">İmzalı kopyası yüklenmemiş zimmet ve iade tutanakları.</p><a class="btn sm" style="align-self:flex-start" href="zimmetler?eksik=1">Listeyi aç</a></section>
+    <section class="card wh"><h2>Bakımdaki cihazlar</h2><p class="muted" style="margin:0">Serviste veya onarımda olan cihazlar.</p><a class="btn sm" style="align-self:flex-start" href="envanter?durum=InMaintenance">Listeyi aç</a></section>
+    @foreach (var r in new[] { ("Personel bazlı zimmet", "Kimde hangi cihaz var, ne zamandan beri"), ("Sarf tüketimi", "Birim ve proje bazında malzeme çıkışları"), ("Envanter değeri", "Maliyet girilmiş kayıtlar üzerinden, depo bazında"), ("Hareket dökümü", "Tarih aralığına göre tüm hareketler") })
+    {
+        <section class="card wh"><h2>@r.Item1</h2><p class="muted" style="margin:0">@r.Item2</p><span class="tag" style="align-self:flex-start">3. aşama</span></section>
+    }
+</div>

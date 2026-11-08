@@ -52,7 +52,7 @@ builder.Services.AddRateLimiter(o =>
     o.RejectionStatusCode = 429;
     o.AddPolicy("login", ctx => RateLimitPartition.GetFixedWindowLimiter(
         ctx.Connection.RemoteIpAddress?.ToString() ?? "?",
-        _ => new FixedWindowRateLimiterOptions { PermitLimit = 10, Window = TimeSpan.FromMinutes(1) }));
+        _ => new FixedWindowRateLimiterOptions { PermitLimit = cfg.GetValue("Security:LoginAttemptsPerMinute", 10), Window = TimeSpan.FromMinutes(1) }));
     o.OnRejected = (c, _) => new ValueTask(c.HttpContext.Response.WriteAsJsonAsync(new Nurol.Envanter.Shared.ApiError("Çok fazla giriş denemesi. Bir dakika sonra tekrar deneyin.")));
 });
 

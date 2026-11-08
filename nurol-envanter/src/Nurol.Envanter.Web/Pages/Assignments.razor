@@ -1,0 +1,82 @@
+@page "/zimmetler"
+@inject Api Api
+@inject Session Session
+@inject NavigationManager Nav
+
+<PageTitle>Zimmetler · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Zimmetler</h1><p>Zimmet ve iade tutanakları. Zimmet durumu ile imzalı evrak durumu ayrı izlenir.</p></div>
+    @if (Session.CanWrite)
+    {
+        <a class="btn" href="zimmetler/iade">İade al</a>
+        <a class="btn" href="zimmetler/devir">Devret</a>
+        <a class="btn pri" href="zimmetler/yeni">+ Yeni zimmet</a>
+    }
+</div>
+
+<section class="card">
+    <div class="toolbar">
+        <form class="search" @onsubmit="Reload"><label class="sr" for="zq">Ara</label><input id="zq" @bind="q" placeholder="Tutanak no, personel veya etiket" /></form>
+        <div class="seg" role="group" aria-label="Tür">
+            <button class="@(kind is null ? "on" : "")" @onclick="() => SetKind(null)">Tümü</button>
+            <button class="@(kind == AssignmentKind.Issue ? "on" : "")" @onclick="() => SetKind(AssignmentKind.Issue)">Zimmet</button>
+            <button class="@(kind == AssignmentKind.Return ? "on" : "")" @onclick="() => SetKind(AssignmentKind.Return)">İade</button>
+        </div>
+        <label class="check"><input type="checkbox" checked="@missing" @onchange="e => { missing = (bool)e.Value!; return Reload(); }" /> Yalnızca imzalı evrakı eksik olanlar</label>
+    </div>
+    @if (error is not null) { <div class="cb"><ErrorNote Error="error" /></div> }
+    <div class="tw">
+        <table>
+            <thead><tr><th>Tutanak no</th><th>Tür</th><th>Personel</th><th>Depo</th><th>Cihaz</th><th>İmzalı evrak</th><th>İşlemi yapan</th></tr></thead>
+            <tbody>
+                @if (result is null) { <tr><td colspan="7" class="empty">Yükleniyor…</td></tr> }
+                else if (result.Items.Count == 0) { <tr><td colspan="7" class="empty">@(missing ? "İmzalı evrakı eksik tutanak yok." : "Kayıt bulunamadı.")</td></tr> }
+                else
+                {
+                    @foreach (var r in result.Items)
+                    {
+                        <tr class="click" @onclick='() => Nav.NavigateTo($"zimmetler/{r.Id}")'>
+                            <td class="mono"><b>@r.No</b><span class="sub">@Fmt.DateTime(r.At)</span></td>
+                            <td><span class="pill @(r.Kind == AssignmentKind.Issue ? "p-info" : "p-ok")">@(r.Kind == AssignmentKind.Issue ? "Zimmet" : "İade")</span></td>
+                            <td><b>@r.EmployeeName</b><span class="sub">@r.Department</span></td>
+                            <td>@r.WarehouseName</td>
+                            <td class="num">@r.ItemCount</td>
+                            <td><DocPill Missing="!r.SignedUploaded" /></td>
+                            <td>@r.UserName</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (result is not null)
+    {
+        <div class="toolbar foot"><span>@result.Total kayıt</span><Pager Page="result.Page" PageSize="result.PageSize" Total="result.Total" OnPage="Go" /></div>
+    }
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "eksik")] public string? Eksik { get; set; }
+    PagedResult<AssignmentListRow>? result;
+    ApiException? error;
+    string? q;
+    AssignmentKind? kind;
+    bool missing;
+    int page = 1;
+
+    protected override Task OnInitializedAsync() { missing = Eksik == "1"; return Load(); }
+
+    async Task Load()
+    {
+        var p = new List<string> { $"page={page}", "pageSize=50" };
+        if (!string.IsNullOrWhiteSpace(q)) p.Add("q=" + Uri.EscapeDataString(q.Trim()));
+        if (kind is not null) p.Add($"kind={kind}");
+        if (missing) p.Add("missingSigned=true");
+        try { result = await Api.Get<PagedResult<AssignmentListRow>>("api/assignments?" + string.Join("&", p)); error = null; }
+        catch (ApiException ex) { error = ex; result = new([], 0, 1, 50); }
+    }
+
+    Task Reload() { page = 1; return Load(); }
+    Task Go(int p) { page = p; return Load(); }
+    Task SetKind(AssignmentKind? k) { kind = k; return Reload(); }
+}

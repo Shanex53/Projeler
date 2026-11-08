@@ -1,0 +1,165 @@
+@page "/depolar"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+
+<PageTitle>Depolar · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Depolar</h1><p>Şirket → depo → lokasyon. Kullanımdaki depo ve lokasyonlar silinmez, arşivlenir.</p></div>
+    @if (Session.IsSystemAdmin) { <button class="btn" @onclick="() => coForm = new()">+ Şirket</button> }
+    @if (Session.CanManageDefinitions) { <button class="btn pri" @onclick="() => OpenWh(null)">+ Depo</button> }
+</div>
+
+@foreach (var co in companies)
+{
+    var list = warehouses.Where(w => w.CompanyId == co.Id).ToList();
+    <section class="stack">
+        <div class="row"><h2 style="flex:1">@co.Name <span class="tag mono">@co.Code</span></h2>
+            @if (Session.IsSystemAdmin) { <button class="btn sm" @onclick="() => coForm = new CoForm { Id = co.Id, Code = co.Code, Name = co.Name }">Şirketi düzenle</button> }
+        </div>
+        @if (list.Count == 0) { <p class="muted" style="margin:0">Bu şirkette depo yok.</p> }
+        <div class="tree">
+            @foreach (var w in list)
+            {
+                <section class="card wh" style="@(w.Archived ? "opacity:.6" : "")">
+                    <div class="row"><div style="flex:1"><h2>@w.Name @if (w.Archived) { <span class="tag">arşiv</span> }</h2><span class="muted" style="font-size:12.5px">@(w.Address ?? "Adres girilmemiş")</span></div>
+                        @if (Session.CanManageDefinitions) { <button class="btn sm" @onclick="() => OpenWh(w)">Düzenle</button> }
+                    </div>
+                    <div class="stat-line"><span><b>@w.ItemCount</b> tekil cihaz</span><span><b>@w.Locations.Count</b> lokasyon</span></div>
+                    <ul>
+                        @foreach (var l in w.Locations)
+                        {
+                            <li><span>@l.Name @if (l.Archived) { <span class="tag">arşiv</span> }</span>
+                                @if (Session.CanWrite) { <button class="btn sm link" @onclick="() => ArchiveLoc(l)">@(l.Archived ? "Geri al" : "Arşivle")</button> }
+                            </li>
+                        }
+                    </ul>
+                    @if (Session.CanWrite && !w.Archived)
+                    {
+                        <form class="row" @onsubmit="() => AddLoc(w)">
+                            <label class="sr" for="@($"loc-{w.Id:N}")">Yeni lokasyon</label>
+                            <input id="@($"loc-{w.Id:N}")" class="sel-in" style="flex:1;min-width:0" placeholder="Yeni lokasyon" value="@newLoc.GetValueOrDefault(w.Id)" @onchange="e => newLoc[w.Id] = e.Value?.ToString()" />
+                            <button class="btn sm" type="submit">Ekle</button>
+                        </form>
+                    }
+                </section>
+            }
+        </div>
+    </section>
+}
+
+@if (whForm is not null)
+{
+    <Modal Title="@(whForm.Id is null ? "Depo ekle" : "Depoyu düzenle")" OnClose="() => whForm = null">
+        <ChildContent>
+            <form class="form" id="whf" @onsubmit="SaveWh">
+                <label class="fld" for="wh-co">Şirket
+                    <select id="wh-co" value="@whForm.CompanyId" disabled="@(whForm.Id is not null)" @onchange="e => whForm.CompanyId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">Seçin</option>
+                        @foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }
+                    </select>
+                </label>
+                <label class="fld" for="wh-name">Depo adı<input id="wh-name" @bind="whForm.Name" /></label>
+                <label class="fld" for="wh-addr">Adres<input id="wh-addr" @bind="whForm.Address" /></label>
+                <ErrorNote Error="error" />
+            </form>
+        </ChildContent>
+        <Footer>
+            @if (whForm.Id is not null) { <button class="btn danger" @onclick="ArchiveWh">@(whForm.Archived ? "Arşivden çıkar" : "Arşivle")</button> }
+            <button class="btn" @onclick="() => whForm = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="whf" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@if (coForm is not null)
+{
+    <Modal Title="@(coForm.Id is null ? "Şirket ekle" : "Şirketi düzenle")" OnClose="() => coForm = null">
+        <ChildContent>
+            <form class="form two" id="cof" @onsubmit="SaveCo">
+                <label class="fld" for="co-name">Şirket adı<input id="co-name" @bind="coForm.Name" /></label>
+                <label class="fld" for="co-code">Kod (etiket öneki)<input id="co-code" @bind="coForm.Code" maxlength="6" placeholder="NRL" /></label>
+                <div class="full"><ErrorNote Error="error" /></div>
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => coForm = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="cof" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    class WhForm { public Guid? Id, CompanyId; public string? Name, Address; public bool Archived; }
+    class CoForm { public Guid? Id; public string? Name, Code; }
+
+    List<CompanyDto> companies = [];
+    List<WarehouseDto> warehouses = [];
+    Dictionary<Guid, string?> newLoc = [];
+    WhForm? whForm;
+    CoForm? coForm;
+    ApiException? error;
+    bool busy;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    async Task Load()
+    {
+        companies = await Api.Get<List<CompanyDto>>("api/companies");
+        warehouses = await Api.Get<List<WarehouseDto>>("api/warehouses?includeArchived=true");
+    }
+
+    void OpenWh(WarehouseDto? w)
+    {
+        error = null;
+        whForm = w is null ? new WhForm { CompanyId = companies.Count == 1 ? companies[0].Id : null } : new WhForm { Id = w.Id, CompanyId = w.CompanyId, Name = w.Name, Address = w.Address, Archived = w.Archived };
+    }
+
+    async Task SaveWh()
+    {
+        error = null;
+        if (whForm!.CompanyId is null) { error = new ApiException("Şirket seçin."); return; }
+        busy = true;
+        try
+        {
+            var body = new WarehouseSave(whForm.CompanyId.Value, whForm.Name ?? "", whForm.Address);
+            if (whForm.Id is Guid id) await Api.Put($"api/warehouses/{id}", body); else await Api.Post("api/warehouses", body);
+            whForm = null; Toasts.Show("Depo kaydedildi"); await Load();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task ArchiveWh()
+    {
+        try { await Api.Post($"api/warehouses/{whForm!.Id}/archive"); whForm = null; await Load(); }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task SaveCo()
+    {
+        error = null; busy = true;
+        try
+        {
+            var body = new CompanySave(coForm!.Code ?? "", coForm.Name ?? "");
+            if (coForm.Id is Guid id) await Api.Put<CompanyDto>($"api/companies/{id}", body); else await Api.Post<CompanyDto>("api/companies", body);
+            coForm = null; Toasts.Show("Şirket kaydedildi"); await Load();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task AddLoc(WarehouseDto w)
+    {
+        var name = newLoc.GetValueOrDefault(w.Id);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        try { await Api.Post<LocationDto>("api/locations", new LocationSave(w.Id, name)); newLoc[w.Id] = null; await Load(); }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
+    }
+
+    async Task ArchiveLoc(LocationDto l)
+    {
+        try { await Api.Post($"api/locations/{l.Id}/archive"); await Load(); }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
+    }
+}

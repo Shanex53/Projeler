@@ -1,0 +1,20 @@
+<svg width="@Size" height="@Size" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">@((MarkupString)(Paths.TryGetValue(Name, out var p) ? p : ""))</svg>
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public int Size { get; set; } = 17;
+
+    static readonly Dictionary<string, string> Paths = new()
+    {
+        ["genel"] = "<path d=\"M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z\"/>",
+        ["envanter"] = "<path d=\"M4 7l8-4 8 4v10l-8 4-8-4z\"/><path d=\"M4 7l8 4 8-4M12 11v10\"/>",
+        ["stok"] = "<path d=\"M4 20h16M6 16V9m4 7V5m4 11v-5m4 5V8\"/>",
+        ["kategoriler"] = "<path d=\"M4 6h16M4 12h10M4 18h7\"/><circle cx=\"18\" cy=\"15\" r=\"3\"/>",
+        ["depolar"] = "<path d=\"M3 21V9l9-5 9 5v12\"/><path d=\"M7 21v-7h10v7M7 17h10\"/>",
+        ["personeller"] = "<circle cx=\"9\" cy=\"8\" r=\"3.5\"/><path d=\"M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.5a3.5 3.5 0 010 7M18 14.8c2 .7 3.2 2.4 3.6 5.2\"/>",
+        ["zimmetler"] = "<path d=\"M7 3h7l5 5v13H7z\"/><path d=\"M14 3v5h5M10 13h6M10 17h4\"/>",
+        ["raporlar"] = "<path d=\"M4 20V4m0 16h16\"/><path d=\"M8 15l4-5 3 3 5-6\"/>",
+        ["yonetim"] = "<circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M4 21c1-4 4-6 8-6s7 2 8 6\"/>",
+        ["ara"] = "<circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M20 20l-4-4\"/>"
+    };
+}

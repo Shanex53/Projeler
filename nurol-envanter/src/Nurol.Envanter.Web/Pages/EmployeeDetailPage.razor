@@ -1,0 +1,125 @@
+@page "/personeller/{Id:guid}"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>@(d?.Employee.FullName ?? "Personel") · Nurol Envanter</PageTitle>
+@if (d is null)
+{
+    @if (error is not null) { <ErrorNote Error="error" /> } else { <div class="loading">Yükleniyor…</div> }
+}
+else
+{
+    var e = d.Employee;
+    <div class="head">
+        <div class="t">
+            <div class="crumb"><a href="personeller">Personeller</a> / @e.CompanyName</div>
+            <h1>@e.FullName</h1>
+            <p>@(e.Title ?? "Unvan yok") · @(e.Department ?? "Birim yok") · @if (e.IsActive) { <span class="pill p-ok">Aktif</span> } else { <span class="pill p-mute">Pasif</span> }</p>
+        </div>
+        @if (Session.CanWrite)
+        {
+            <button class="btn" @onclick="() => form = EmployeeEditor.EmpForm.From(e, companies)">Düzenle</button>
+            @if (d.OpenItems.Count > 0)
+            {
+                <a class="btn" href="zimmetler/iade?personel=@e.Id">İade al</a>
+                <a class="btn" href="zimmetler/devir?personel=@e.Id">Devret</a>
+            }
+            @if (e.IsActive) { <a class="btn pri" href="zimmetler/yeni?personel=@e.Id">+ Zimmetle</a> }
+        }
+    </div>
+    @if (!e.IsActive && d.OpenItems.Count > 0) { <div class="note warn">Personel pasif durumda ama üzerinde @d.OpenItems.Count açık zimmet var.</div> }
+
+    <div class="grid g2">
+        <div class="stack">
+            <section class="card">
+                <div class="ch"><h2>Açık zimmetler</h2><span class="tag">@d.OpenItems.Count cihaz</span></div>
+                <div class="tw">
+                    <table>
+                        <thead><tr><th>Etiket</th><th>Cihaz</th><th>Seri no</th><th>Evrak</th></tr></thead>
+                        <tbody>
+                            @if (d.OpenItems.Count == 0) { <tr><td colspan="4" class="empty">Üzerinde zimmetli cihaz yok.</td></tr> }
+                            @foreach (var i in d.OpenItems)
+                            {
+                                <tr class="click" @onclick='() => Nav.NavigateTo($"envanter/{i.Id}")'>
+                                    <td class="mono"><b>@i.Tag</b></td><td>@i.ManufacturerName @i.ModelName<span class="sub">@i.CategoryName</span></td>
+                                    <td class="mono">@(i.Serial ?? "—")</td><td><DocPill Missing="i.SignedDocumentMissing" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="card">
+                <div class="ch"><h2>Tutanak geçmişi</h2></div>
+                <div class="tw">
+                    <table>
+                        <thead><tr><th>Tutanak</th><th>Tür</th><th>Depo</th><th class="right">Cihaz</th><th>İmzalı evrak</th></tr></thead>
+                        <tbody>
+                            @if (d.Assignments.Count == 0) { <tr><td colspan="5" class="empty">Tutanak yok.</td></tr> }
+                            @foreach (var a in d.Assignments)
+                            {
+                                <tr class="click" @onclick='() => Nav.NavigateTo($"zimmetler/{a.Id}")'>
+                                    <td class="mono">@a.No<span class="sub">@Fmt.DateTime(a.At)</span></td>
+                                    <td><span class="pill @(a.Kind == AssignmentKind.Issue ? "p-info" : "p-ok")">@(a.Kind == AssignmentKind.Issue ? "Zimmet" : "İade")</span></td>
+                                    <td>@a.WarehouseName</td><td class="num right">@a.ItemCount</td><td><DocPill Missing="!a.SignedUploaded" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+        <div class="stack">
+            <section class="card">
+                <div class="ch"><h2>Bilgiler</h2></div>
+                <div class="cb">
+                    <dl class="kv">
+                        <dt>Şirket</dt><dd>@e.CompanyName</dd>
+                        <dt>Sicil no</dt><dd class="mono">@(e.RegistryNo ?? "—")</dd>
+                        <dt>E-posta</dt><dd>@(e.Email ?? "—")</dd>
+                        <dt>Kaynak</dt><dd>@(e.Source == EmployeeSource.Directory ? "Active Directory" : "Elle kayıt")</dd>
+                    </dl>
+                </div>
+            </section>
+            <section class="card">
+                <div class="ch"><h2>Sarf geçmişi</h2></div>
+                <div class="cb" style="padding-block:4px">
+                    @if (d.Consumption.Count == 0) { <p class="muted">Bu personele sarf çıkışı yapılmamış.</p> }
+                    @foreach (var m in d.Consumption)
+                    {
+                        <div class="doc-row"><div class="grow"><b>@m.StockItemName</b> · <span class="num">@Fmt.Qty(Math.Abs(m.Quantity)) @m.Unit</span><span class="muted" style="display:block;font-size:12px">@Fmt.DateTime(m.At) · @m.WarehouseName @(m.Note is null ? "" : "· " + m.Note)</span></div></div>
+                    }
+                </div>
+            </section>
+        </div>
+    </div>
+}
+
+@if (form is not null)
+{
+    <EmployeeEditor Form="form" Companies="companies" OnClose="() => form = null" OnSaved="Saved" />
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    EmployeeDetail? d;
+    List<CompanyDto> companies = [];
+    EmployeeEditor.EmpForm? form;
+    ApiException? error;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Load();
+        try { companies = await Api.Get<List<CompanyDto>>("api/companies"); } catch (ApiException) { }
+    }
+
+    async Task Load()
+    {
+        try { d = await Api.Get<EmployeeDetail>($"api/employees/{Id}"); }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task Saved() { form = null; Toasts.Show("Personel kaydedildi"); await Load(); }
+}
