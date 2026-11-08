@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nurol Envanter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Yerleşim: lacivert sabit yan menü + açık zeminli çalışma alanı; kartlar yalnızca gruplama gereken yerde. */
+:root {
+  --bg: #f2f5f9; --surface: #ffffff; --surface-2: #f7f9fc; --line: #dbe2ec;
+  --fg: #142235; --muted: #5a6a80; --accent: #1f5fd1; --accent-soft: #e6eefc;
+  --nav: #0f2744; --nav-fg: #c9d6e8; --nav-active: #1c3c66;
+  --ok: #1d7f55; --ok-soft: #e3f4ec; --warn: #a76b12; --warn-soft: #fbf0dc;
+  --crit: #b83a28; --crit-soft: #fbe7e3; --move: #5b46c9; --move-soft: #ece9fb;
+  --font-display: "Manrope", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Public Sans", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+  --r: 10px; color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0c141f; --surface: #131e2d; --surface-2: #182536; --line: #24344b;
+  --fg: #e3e9f2; --muted: #8fa0b7; --accent: #6c9cf3; --accent-soft: #1a2c4a;
+  --nav: #08101a; --nav-fg: #a9b8cc; --nav-active: #18294160;
+  --ok: #4cc28c; --ok-soft: #12302a; --warn: #e0a64a; --warn-soft: #33270f;
+  --crit: #ef7a66; --crit-soft: #3a1a16; --move: #a594f5; --move-soft: #261f47; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0c141f; --surface: #131e2d; --surface-2: #182536; --line: #24344b;
+  --fg: #e3e9f2; --muted: #8fa0b7; --accent: #6c9cf3; --accent-soft: #1a2c4a;
+  --nav: #08101a; --nav-fg: #a9b8cc; --nav-active: #18294160;
+  --ok: #4cc28c; --ok-soft: #12302a; --warn: #e0a64a; --warn-soft: #33270f;
+  --crit: #ef7a66; --crit-soft: #3a1a16; --move: #a594f5; --move-soft: #261f47; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--font-body); }
+h1, h2, h3 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 22px; font-weight: 800; }
+h2 { font-size: 16px; font-weight: 700; }
+h3 { font-size: 13px; font-weight: 700; }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+
+.app { display: grid; grid-template-columns: 236px 1fr; min-height: 100%; }
+.side { background: var(--nav); color: var(--nav-fg); padding: 18px 12px; display: flex; flex-direction: column; gap: 18px; position: sticky; top: 0; height: 100vh; }
+.brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px; color: #fff; }
+.brand-mark { width: 30px; height: 30px; border-radius: 8px; background: linear-gradient(140deg, #3b7cf0, #1a4aa8); display: grid; place-items: center; font: 800 13px var(--font-display); color: #fff; }
+.brand b { font: 800 15px var(--font-display); display: block; line-height: 1.1; }
+.brand small { font-size: 11px; color: var(--nav-fg); }
+.nav { display: flex; flex-direction: column; gap: 2px; }
+.nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--nav-fg); text-decoration: none; font-weight: 500; }
+.nav a:hover { background: #ffffff10; color: #fff; }
+.nav a.on { background: var(--nav-active); color: #fff; box-shadow: inset 3px 0 0 #5b93f5; }
+.nav svg { width: 17px; height: 17px; flex: none; opacity: .85; }
+.nav .sep { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; padding: 14px 10px 4px; color: #7f93ad; }
+.side-foot { margin-top: auto; font-size: 11.5px; padding: 10px; border-radius: 8px; background: #ffffff0c; line-height: 1.45; }
+
+.main { min-width: 0; display: flex; flex-direction: column; }
+.top { display: flex; align-items: center; gap: 12px; padding: 12px max(24px, env(safe-area-inset-right, 0px)) 12px max(24px, env(safe-area-inset-left, 0px)); border-bottom: 1px solid var(--line); background: var(--surface); position: sticky; top: 0; z-index: 5; }
+.search { flex: 1; max-width: 460px; display: flex; align-items: center; gap: 8px; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+.search input { border: 0; background: none; outline: none; width: 100%; }
+.top .sp { flex: 1; }
+.chip-select { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 6px 10px; }
+.user { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+.proto { font-size: 11px; font-weight: 600; color: var(--warn); background: var(--warn-soft); padding: 3px 8px; border-radius: 99px; white-space: nowrap; }
+
+.view { padding: 22px max(24px, env(safe-area-inset-right, 0px)) 40px max(24px, env(safe-area-inset-left, 0px)); display: flex; flex-direction: column; gap: 18px; }
+.head { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.head .t { flex: 1; min-width: 220px; }
+.head p { margin: 4px 0 0; color: var(--muted); }
+.crumb { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.crumb a { color: var(--accent); text-decoration: none; }
+
+.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); padding: 7px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 13px; white-space: nowrap; }
+.btn:hover { border-color: var(--accent); }
+.btn.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.pri:hover { filter: brightness(1.08); }
+.btn.sm { padding: 4px 9px; font-size: 12px; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.card > .ch { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.card > .ch h2 { flex: 1; }
+.card > .cb { padding: 14px 16px; }
+.grid { display: grid; gap: 16px; }
+.g2 { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+.g2e { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; }
+.kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 14px; display: flex; flex-direction: column; gap: 4px; text-decoration: none; color: inherit; }
+.kpi:hover { border-color: var(--accent); }
+.kpi .l { font-size: 12px; color: var(--muted); }
+.kpi .v { font: 800 26px/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+.kpi .s { font-size: 11.5px; color: var(--muted); }
+.kpi.alert .v { color: var(--crit); }
+.kpi.alert { border-color: color-mix(in srgb, var(--crit) 35%, var(--line)); }
+
+.pill { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.p-depoda { color: var(--ok); background: var(--ok-soft); }
+.p-zimmetli { color: var(--accent); background: var(--accent-soft); }
+.p-transferde { color: var(--move); background: var(--move-soft); }
+.p-bakimda { color: var(--warn); background: var(--warn-soft); }
+.p-disi { color: var(--muted); background: var(--surface-2); }
+.p-crit { color: var(--crit); background: var(--crit-soft); }
+.tag { display: inline-block; font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 5px; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); }
+.tag.ad { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 35%, var(--line)); background: var(--accent-soft); }
+.tag.custom { color: var(--move); border-color: color-mix(in srgb, var(--move) 30%, var(--line)); background: var(--move-soft); }
+
+.tw { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--surface-2); white-space: nowrap; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+tr.click { cursor: pointer; }
+tr.click:hover td { background: var(--surface-2); }
+tr.sel td { background: var(--accent-soft); }
+td .sub { display: block; font-size: 12px; color: var(--muted); }
+
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.toolbar .search { max-width: 280px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 6px 11px; cursor: pointer; font-size: 12.5px; font-weight: 500; border-right: 1px solid var(--line); }
+.seg button:last-child { border-right: 0; }
+.seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.views { display: flex; gap: 4px; padding: 0 16px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.views button { border: 0; background: none; padding: 11px 10px; cursor: pointer; font-weight: 600; font-size: 13px; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+.views button.on { color: var(--fg); border-bottom-color: var(--accent); }
+.pop-wrap { position: relative; }
+.pop { position: absolute; right: 0; top: calc(100% + 6px); width: 260px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 12px 32px #0f274426; padding: 10px; z-index: 10; }
+.pop h3 { padding: 2px 4px 8px; }
+.pop label { display: flex; align-items: center; gap: 8px; padding: 6px 4px; border-radius: 6px; cursor: grab; }
+.pop label:hover { background: var(--surface-2); }
+.pop .grip { color: var(--muted); font-size: 11px; margin-left: auto; letter-spacing: -2px; }
+.pop .foot { display: flex; gap: 6px; padding-top: 8px; border-top: 1px solid var(--line); margin-top: 6px; }
+
+.bars { display: flex; flex-direction: column; gap: 12px; }
+.bar-row { display: grid; grid-template-columns: 150px 1fr 48px; gap: 10px; align-items: center; font-size: 13px; }
+.bar { height: 10px; border-radius: 99px; background: var(--surface-2); display: flex; overflow: hidden; border: 1px solid var(--line); }
+.bar i { display: block; height: 100%; }
+.legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 6px; background: var(--c); vertical-align: -1px; }
+
+.feed { display: flex; flex-direction: column; }
+.feed li { list-style: none; display: grid; grid-template-columns: 34px 1fr auto; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: start; }
+.feed li:last-child { border-bottom: 0; }
+.feed ul { margin: 0; padding: 0; }
+.ico { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-weight: 800; font-size: 12px; font-family: var(--font-display); }
+.time { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+.kv { display: grid; grid-template-columns: 150px 1fr; gap: 8px 14px; font-size: 13.5px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.group-title { display: flex; align-items: center; gap: 8px; margin: 16px 0 10px; font: 700 12px var(--font-display); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.group-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+.timeline { list-style: none; margin: 0; padding: 0 0 0 4px; }
+.timeline li { position: relative; padding: 0 0 16px 22px; border-left: 2px solid var(--line); }
+.timeline li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.timeline li::before { content: ""; position: absolute; left: -7px; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--surface); border: 2px solid var(--c, var(--accent)); }
+.timeline b { display: block; font-weight: 600; }
+
+.doc-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.doc-row:last-child { border-bottom: 0; }
+.doc-ic { width: 32px; height: 38px; border-radius: 5px; border: 1px solid var(--line); background: var(--surface-2); display: grid; place-items: center; font: 700 9px var(--font-mono); color: var(--crit); flex: none; }
+.doc-row .grow { flex: 1; min-width: 0; }
+
+.steps { display: flex; align-items: center; gap: 0; font-size: 12px; }
+.steps span { display: flex; align-items: center; gap: 6px; color: var(--muted); white-space: nowrap; }
+.steps span::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--line); background: var(--surface); }
+.steps span.done { color: var(--fg); }
+.steps span.done::before { background: var(--ok); border-color: var(--ok); }
+.steps span.now { color: var(--move); font-weight: 700; }
+.steps span.now::before { background: var(--move); border-color: var(--move); box-shadow: 0 0 0 3px var(--move-soft); }
+.steps i { width: 26px; height: 2px; background: var(--line); margin: 0 6px; }
+
+.field-list { display: flex; flex-direction: column; }
+.fl-row { display: grid; grid-template-columns: 22px minmax(0, 1.3fr) 110px minmax(0, 1.5fr) 92px; gap: 12px; align-items: center; padding: 11px 16px; border-bottom: 1px solid var(--line); }
+.fl-row.h { font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; background: var(--surface-2); padding-block: 8px; }
+.fl-row.arch { opacity: .6; }
+.fl-row .grip { color: var(--muted); cursor: grab; letter-spacing: -2px; }
+.rules { display: flex; gap: 5px; flex-wrap: wrap; }
+.cat-list { display: flex; flex-direction: column; padding: 6px; }
+.cat-list button { display: flex; justify-content: space-between; align-items: center; border: 0; background: none; text-align: left; padding: 9px 10px; border-radius: 8px; cursor: pointer; }
+.cat-list button:hover { background: var(--surface-2); }
+.cat-list button.on { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+
+.a4-wrap { background: var(--surface-2); border-radius: var(--r); padding: 18px; overflow-x: auto; }
+.a4 { width: 100%; max-width: 560px; min-width: 480px; margin: 0 auto; aspect-ratio: 210 / 297; background: #fff; color: #18202b; box-shadow: 0 6px 24px #0f274422; padding: 36px 40px; font-size: 10.5px; line-height: 1.45; display: flex; flex-direction: column; gap: 14px; }
+.a4 .dh { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #1f3d66; padding-bottom: 10px; }
+.a4 .dh b { font: 800 15px var(--font-display); color: #1f3d66; display: block; }
+.a4 table th { background: #eef2f8; color: #3b4a5e; font-size: 8.5px; padding: 5px 6px; border: 1px solid #cdd6e3; }
+.a4 table td { padding: 5px 6px; border: 1px solid #cdd6e3; font-size: 9.5px; }
+.a4 .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; }
+.a4 .meta span { color: #5b6879; }
+.a4 .sig { margin-top: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
+.a4 .sig div { border-top: 1px solid #18202b; padding-top: 5px; text-align: center; }
+.a4 .stmt { color: #333d4a; }
+.a4 .ft { display: flex; justify-content: space-between; color: #7a8696; font-size: 8.5px; border-top: 1px solid #dde3ec; padding-top: 6px; }
+
+.drop { border: 2px dashed var(--line); border-radius: var(--r); padding: 18px; text-align: center; color: var(--muted); display: block; cursor: pointer; }
+.drop:hover { border-color: var(--accent); color: var(--accent); }
+.drop input { display: none; }
+
+.form { display: grid; gap: 12px; }
+.form label { display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; font-weight: 600; }
+.form input, .form select { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--surface); font-weight: 400; font-size: 14px; }
+.form .err input { border-color: var(--crit); }
+.err-msg { color: var(--crit); font-size: 12.5px; font-weight: 500; }
+.note { font-size: 12.5px; padding: 10px 12px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--line); color: var(--muted); }
+.note.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 30%, var(--line)); color: var(--fg); }
+
+.tree { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.wh { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.wh ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; }
+.wh li { display: flex; justify-content: space-between; padding: 5px 8px; border-radius: 6px; background: var(--surface-2); }
+.stat-line { display: flex; gap: 14px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+.stat-line b { color: var(--fg); font-variant-numeric: tabular-nums; }
+
+.stock-meter { width: 120px; height: 6px; border-radius: 99px; background: var(--surface-2); border: 1px solid var(--line); overflow: hidden; }
+.stock-meter i { display: block; height: 100%; }
+
+.login { min-height: 100%; display: grid; grid-template-columns: 1.1fr 1fr; }
+.login-art { background: var(--nav); color: #fff; padding: 48px; display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; }
+.login-art h1 { font-size: 34px; line-height: 1.15; max-width: 14ch; color: #fff; }
+.login-art p { color: var(--nav-fg); max-width: 42ch; }
+.login-grid { position: absolute; inset: auto -40px -40px auto; width: 360px; height: 360px; background-image: linear-gradient(#ffffff12 1px, transparent 1px), linear-gradient(90deg, #ffffff12 1px, transparent 1px); background-size: 28px 28px; transform: rotate(-8deg); }
+.login-form { display: grid; place-items: center; padding: 32px max(16px, env(safe-area-inset-right, 0px)) 32px max(16px, env(safe-area-inset-left, 0px)); }
+.login-box { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 18px; }
+.login-box .seg { width: 100%; }
+.login-box .seg button { flex: 1; padding: 9px; }
+
+.toast { position: fixed; right: max(20px, env(safe-area-inset-right, 0px)); bottom: max(20px, env(safe-area-inset-bottom, 0px)); background: var(--fg); color: var(--bg); padding: 10px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; z-index: 50; }
+
+@media (max-width: 1180px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .tree { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  .side { position: static; height: auto; flex-direction: row; align-items: center; padding: 10px max(16px, env(safe-area-inset-right, 0px)) 10px max(16px, env(safe-area-inset-left, 0px)); gap: 12px; overflow-x: auto; }
+  .brand small, .side-foot, .nav .sep { display: none; }
+  .nav { flex-direction: row; }
+  .nav a { white-space: nowrap; }
+  .nav a.on { box-shadow: inset 0 -3px 0 #5b93f5; }
+  .g2, .g2e, .login { grid-template-columns: 1fr; }
+  .login-art { padding: 28px 20px; }
+  .fl-row { grid-template-columns: 18px minmax(0, 1fr) 90px; }
+  .fl-row > :nth-child(4), .fl-row > :nth-child(5) { display: none; }
+}
+@media (max-width: 640px) {
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tree { grid-template-columns: 1fr; }
+  .top { flex-wrap: wrap; padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
+  .view { padding-inline: max(16px, env(safe-area-inset-left, 0px)) max(16px, env(safe-area-inset-right, 0px)); }
+  .user span, .top .chip-select { display: none; }
+  .kv { grid-template-columns: 1fr; gap: 2px; }
+  .kv dd { margin-bottom: 8px; }
+  .bar-row { grid-template-columns: 100px 1fr 40px; }
+}
+@media (prefers-reduced-motion: no-preference) { .view { animation: fade .18s ease-out; } @keyframes fade { from { opacity: .4; transform: translateY(3px); } } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const ICONS = {
+  genel: '<path d="M3 13h8V3H3zm10 8h8V11h-8zM3 21h8v-6H3zm10-18v6h8V3z"/>',
+  envanter: '<path d="M4 7l8-4 8 4v10l-8 4-8-4z"/><path d="M4 7l8 4 8-4M12 11v10"/>',
+  stok: '<path d="M4 20h16M6 16V9m4 7V5m4 11v-5m4 5V8"/>',
+  kategoriler: '<path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="15" r="3"/>',
+  depolar: '<path d="M3 21V9l9-5 9 5v12"/><path d="M7 21v-7h10v7M7 17h10"/>',
+  transferler: '<path d="M4 8h13l-3-3m6 11H7l3 3"/>',
+  personeller: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.3-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.5a3.5 3.5 0 010 7M18 14.8c2 .7 3.2 2.4 3.6 5.2"/>',
+  zimmetler: '<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h4"/>',
+  raporlar: '<path d="M4 20V4m0 16h16"/><path d="M8 15l4-5 3 3 5-6"/>',
+  yonetim: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>'
+};
+const NAV = [
+  ['genel', 'Genel Bakış'], ['envanter', 'Envanter'], ['stok', 'Stok'], ['zimmetler', 'Zimmetler'],
+  ['transferler', 'Transferler'], ['personeller', 'Personeller'],
+  ['sep', 'Tanımlar'], ['kategoriler', 'Kategoriler ve Alanlar'], ['depolar', 'Depolar'],
+  ['sep', 'Sistem'], ['raporlar', 'Raporlar'], ['yonetim', 'Yönetim']
+];
+const STATUS = { depoda: ['Depoda', 'p-depoda'], zimmetli: ['Zimmetli', 'p-zimmetli'], transferde: ['Transferde', 'p-transferde'], bakimda: ['Bakımda', 'p-bakimda'], disi: ['Kullanım dışı', 'p-disi'] };
+
+const ASSETS = [
+  { tag: 'NRL-TLF-000214', cat: 'Cep Telefonu', brand: 'Samsung', model: 'Galaxy A55', serial: 'R58X21KQ9PL', imei: '352093114857261', imei2: '352093114857279', hat: '0532 418 27 60', ram: '', depo: 'Ankara Merkez Depo', loc: 'Raf B-04', status: 'zimmetli', person: 'Ayşe Korkmaz', doc: 'imzali', cost: '18.450,00 ₺' },
+  { tag: 'NRL-BLG-000087', cat: 'Dizüstü Bilgisayar', brand: 'Lenovo', model: 'ThinkPad T14 Gen 5', serial: 'PF4K92LX', imei: '', ram: '32 GB', depo: 'Ankara Merkez Depo', loc: 'BT Odası', status: 'zimmetli', person: 'Mehmet Yıldırım', doc: 'eksik', cost: '64.900,00 ₺' },
+  { tag: 'NRL-TLF-000231', cat: 'Cep Telefonu', brand: 'Apple', model: 'iPhone 15', serial: 'G6TZ81PQ0D', imei: '013847002816540', hat: '0533 902 11 45', ram: '', depo: 'İstanbul Şantiye Deposu', loc: 'Konteyner 2', status: 'depoda', person: '', doc: '', cost: '52.000,00 ₺' },
+  { tag: 'NRL-BLG-000112', cat: 'Dizüstü Bilgisayar', brand: 'Dell', model: 'Latitude 5450', serial: '8KJ4N03', imei: '', ram: '16 GB', depo: 'Ankara Merkez Depo', loc: 'BT Odası', status: 'bakimda', person: '', doc: '', cost: '48.300,00 ₺' },
+  { tag: 'NRL-AGC-000019', cat: 'Ağ Cihazı', brand: 'Cisco', model: 'Catalyst 1000-24T', serial: 'FOC2741Y0QS', imei: '', ram: '', depo: 'Gölbaşı Fabrika Deposu', loc: 'Sistem Odası', status: 'transferde', person: '', doc: '', cost: '31.750,00 ₺' },
+  { tag: 'NRL-TLF-000198', cat: 'Cep Telefonu', brand: 'Samsung', model: 'Galaxy S24', serial: 'R5CX10MMB2E', imei: '354812290034118', hat: '0532 650 74 09', ram: '', depo: 'Ankara Merkez Depo', loc: 'Raf B-04', status: 'zimmetli', person: 'Can Demir', doc: 'eksik', cost: '41.200,00 ₺' },
+  { tag: 'NRL-MNT-000056', cat: 'Monitör', brand: 'LG', model: '27BR650B', serial: '402NTPC8L113', imei: '', ram: '', depo: 'Ankara Merkez Depo', loc: 'Raf A-01', status: 'depoda', person: '', doc: '', cost: '9.800,00 ₺' },
+  { tag: 'NRL-BLG-000090', cat: 'Dizüstü Bilgisayar', brand: 'Lenovo', model: 'ThinkPad T14 Gen 5', serial: 'PF4K93MB', imei: '', ram: '32 GB', depo: 'İstanbul Şantiye Deposu', loc: 'Şantiye Ofisi', status: 'zimmetli', person: 'Elif Şahin', doc: 'imzali', cost: '64.900,00 ₺' },
+  { tag: 'NRL-TBL-000011', cat: 'Tablet', brand: 'Samsung', model: 'Galaxy Tab Active5', serial: 'R52W70A1KJT', imei: '355601472210983', hat: '', ram: '', depo: 'İstanbul Şantiye Deposu', loc: 'Konteyner 2', status: 'depoda', person: '', doc: '', cost: '27.600,00 ₺' },
+  { tag: 'NRL-YZC-000007', cat: 'Yazıcı', brand: 'HP', model: 'LaserJet Pro 4003dn', serial: 'PHBQK21447', imei: '', ram: '', depo: 'Gölbaşı Fabrika Deposu', loc: 'İdari Bina', status: 'disi', person: '', doc: '', cost: '' },
+  { tag: 'NRL-TLF-000240', cat: 'Cep Telefonu', brand: 'Xiaomi', model: 'Redmi Note 13', serial: '45021/AB7Q', imei: '864211063390527', hat: '0530 117 52 38', ram: '', depo: 'Gölbaşı Fabrika Deposu', loc: 'Güvenlik', status: 'zimmetli', person: 'Hasan Öztürk', doc: 'imzali', cost: '11.900,00 ₺' },
+  { tag: 'NRL-BLG-000121', cat: 'Dizüstü Bilgisayar', brand: 'Dell', model: 'Latitude 7450', serial: '3MZ8R14', imei: '', ram: '16 GB', depo: 'Ankara Merkez Depo', loc: 'BT Odası', status: 'depoda', person: '', doc: '', cost: '71.500,00 ₺' }
+];
+const COLS = [
+  { k: 'tag', l: 'Envanter etiketi', on: true, fixed: true },
+  { k: 'cat', l: 'Kategori', on: true },
+  { k: 'model', l: 'Marka / model', on: true },
+  { k: 'serial', l: 'Seri numarası', on: true },
+  { k: 'imei', l: 'IMEI 1', on: true, custom: true },
+  { k: 'ram', l: 'RAM', on: false, custom: true },
+  { k: 'status', l: 'Durum', on: true },
+  { k: 'where', l: 'Konum / zimmetli', on: true },
+  { k: 'doc', l: 'Evrak', on: true },
+  { k: 'cost', l: 'Maliyet', on: false }
+];
+const STOCK = [
+  { code: 'SRF-KBL-001', name: 'Cat6 ağ kablosu', unit: 'metre', bal: [['Ankara Merkez', 1240], ['İstanbul Şantiye', 310], ['Gölbaşı Fabrika', 85]], min: 300 },
+  { code: 'SRF-TNR-014', name: 'HP 151A toner', unit: 'adet', bal: [['Ankara Merkez', 4], ['İstanbul Şantiye', 0], ['Gölbaşı Fabrika', 2]], min: 10 },
+  { code: 'SRF-KLV-003', name: 'USB klavye (TR-Q)', unit: 'adet', bal: [['Ankara Merkez', 38], ['İstanbul Şantiye', 12], ['Gölbaşı Fabrika', 9]], min: 20 },
+  { code: 'SRF-MOU-003', name: 'Kablosuz mouse', unit: 'adet', bal: [['Ankara Merkez', 22], ['İstanbul Şantiye', 6], ['Gölbaşı Fabrika', 4]], min: 15 },
+  { code: 'SRF-SIM-001', name: 'Data hattı SIM kart', unit: 'adet', bal: [['Ankara Merkez', 14], ['İstanbul Şantiye', 3], ['Gölbaşı Fabrika', 0]], min: 10 },
+  { code: 'SRF-BAT-020', name: 'Telsiz bataryası', unit: 'adet', bal: [['Ankara Merkez', 0], ['İstanbul Şantiye', 26], ['Gölbaşı Fabrika', 11]], min: 12 }
+];
+const ZIMMETS = [
+  { no: 'ZMT-2026-000412', person: 'Ayşe Korkmaz', title: 'Satın Alma Uzmanı', dept: 'Satın Alma Müdürlüğü', sicil: '10482', items: ['NRL-TLF-000214'], date: '04.11.2026 10:42', by: 'Selin Aydın', doc: 'imzali' },
+  { no: 'ZMT-2026-000415', person: 'Mehmet Yıldırım', title: 'Proje Mühendisi', dept: 'Altyapı Projeleri', sicil: '11207', items: ['NRL-BLG-000087'], date: '06.11.2026 14:15', by: 'Selin Aydın', doc: 'eksik' },
+  { no: 'ZMT-2026-000417', person: 'Can Demir', title: 'Şantiye Şefi', dept: 'İstanbul Şantiyesi', sicil: '09931', items: ['NRL-TLF-000198'], date: '07.11.2026 09:05', by: 'Burak Kaya', doc: 'eksik' },
+  { no: 'ZMT-2026-000398', person: 'Elif Şahin', title: 'Mimar', dept: 'Tasarım Ofisi', sicil: '11530', items: ['NRL-BLG-000090'], date: '28.10.2026 16:30', by: 'Burak Kaya', doc: 'imzali' },
+  { no: 'ZMT-2026-000390', person: 'Hasan Öztürk', title: 'Güvenlik Amiri', dept: 'İdari İşler', sicil: '08714', items: ['NRL-TLF-000240'], date: '22.10.2026 11:20', by: 'Selin Aydın', doc: 'imzali' }
+];
+const PEOPLE = [
+  { name: 'Ayşe Korkmaz', mail: 'ayse.korkmaz', comp: 'Nurol İnşaat', dept: 'Satın Alma Müdürlüğü', src: 'AD', open: 1, acct: '' },
+  { name: 'Burak Kaya', mail: 'burak.kaya', comp: 'Nurol İnşaat', dept: 'Bilgi Teknolojileri', src: 'AD', open: 0, acct: 'Depo sorumlusu' },
+  { name: 'Can Demir', mail: 'can.demir', comp: 'Nurol İnşaat', dept: 'İstanbul Şantiyesi', src: 'AD', open: 1, acct: '' },
+  { name: 'Elif Şahin', mail: 'elif.sahin', comp: 'Nurol İnşaat', dept: 'Tasarım Ofisi', src: 'AD', open: 1, acct: '' },
+  { name: 'Hasan Öztürk', mail: 'hasan.ozturk', comp: 'Nurol İnşaat', dept: 'İdari İşler', src: 'Elle', open: 1, acct: '' },
+  { name: 'Kemal Arslan', mail: 'kemal.arslan', comp: 'Nurol İnşaat', dept: 'Altyapı Projeleri', src: 'AD', open: 2, acct: '', flag: "AD'de devre dışı" },
+  { name: 'Mehmet Yıldırım', mail: 'mehmet.yildirim', comp: 'Nurol İnşaat', dept: 'Altyapı Projeleri', src: 'AD', open: 1, acct: '' },
+  { name: 'Selin Aydın', mail: 'selin.aydin', comp: 'Nurol İnşaat', dept: 'Bilgi Teknolojileri', src: 'AD', open: 0, acct: 'Şirket yöneticisi' },
+  { name: 'Zeynep Çelik', mail: 'zeynep.celik', comp: 'Nurol İnşaat', dept: 'İç Denetim', src: 'AD', open: 0, acct: 'Denetçi' }
+];
+
+const state = { q: '', st: 'all', cat: 'all', view: 'Tüm envanter', colsOpen: false, sel: 'NRL-TLF-000214', zsel: 'ZMT-2026-000415', fcat: 'Cep Telefonu', stockForm: true, loginType: 'ad', uploaded: {} };
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const pill = s => `<span class="pill ${STATUS[s][1]}">${STATUS[s][0]}</span>`;
+const docPill = d => d === 'imzali' ? '<span class="pill p-depoda">İmzalı yüklendi</span>' : d === 'eksik' ? '<span class="pill p-crit">İmzalı evrak eksik</span>' : '<span class="muted">—</span>';
+const icon = k => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICONS[k]}</svg>`;
+function toast(m) { const t = document.createElement('div'); t.className = 'toast'; t.textContent = m; document.body.appendChild(t); setTimeout(() => t.remove(), 2600); }
+
+function shell(route, body) {
+  const navRoute = route === 'varlik' ? 'envanter' : route;
+  return `<div class="app">
+  <aside class="side">
+    <div class="brand"><div class="brand-mark">NE</div><div><b>Nurol Envanter</b><small>Demirbaş · Stok · Zimmet</small></div></div>
+    <nav class="nav">${NAV.map(([k, l]) => k === 'sep' ? `<div class="sep">${l}</div>` : `<a href="#${k}" class="${k === navRoute ? 'on' : ''}">${icon(k)}${l}</a>`).join('')}</nav>
+    <div class="side-foot">Arayüz prototipi. Gösterilen kayıtlar örnek veridir.<br><a href="#giris" style="color:#8fb4f5">Giriş ekranını gör →</a></div>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <label class="search" for="gq">${icon('envanter').replace('<svg', '<svg width="16" height="16"')}<input id="gq" placeholder="Etiket, seri no, IMEI veya personel ara"></label>
+      <div class="sp"></div>
+      <span class="proto">Prototip</span>
+      <select class="chip-select" id="company" aria-label="Şirket"><option>Nurol İnşaat</option><option>Nurol Makina</option><option>Nurol Teknoloji</option></select>
+      <div class="user"><div class="avatar">SA</div><span><b>Selin Aydın</b><br><span class="muted" style="font-size:11.5px">Şirket yöneticisi · AD</span></span></div>
+    </header>
+    <main class="view">${body}</main>
+  </div></div>`;
+}
+
+const V = {};
+V.genel = () => {
+  const k = [['Tekil envanter', '1.284', 'Nurol İnşaat, 3 depo', 'envanter'], ['Depoda', '412', 'Zimmete hazır', 'envanter'], ['Zimmetli', '798', '611 personelde', 'zimmetler'], ['Bakımda', '21', '4 servis firmasında', 'envanter'], ['Bekleyen transfer', '3', '1 teslim alınmayı bekliyor', 'transferler'], ['İmzalı evrak eksik', '7', 'En eskisi 9 gün önce', 'zimmetler', 1]];
+  const depo = [['Ankara Merkez Depo', 182, 512, 9, 6], ['İstanbul Şantiye Deposu', 141, 198, 2, 1], ['Gölbaşı Fabrika Deposu', 89, 88, 10, 2]];
+  const crit = STOCK.flatMap(s => s.bal.filter(b => b[1] < s.min / 2).map(b => [s, b])).slice(0, 5);
+  return `<div class="head"><div class="t"><h1>Genel Bakış</h1><p>Nurol İnşaat · 8 Kasım 2026 Pazar, 22:10 (İstanbul)</p></div>
+    <a class="btn" href="#stok">Stok hareketi</a><a class="btn pri" href="#zimmetler">+ Yeni zimmet</a></div>
+  <div class="kpis">${k.map(x => `<a class="kpi ${x[4] ? 'alert' : ''}" href="#${x[3]}"><span class="l">${x[0]}</span><span class="v">${x[1]}</span><span class="s">${x[2]}</span></a>`).join('')}</div>
+  <div class="grid g2">
+    <section class="card"><div class="ch"><h2>Depolara göre tekil cihazlar</h2><span class="muted" style="font-size:12px">adet</span></div><div class="cb">
+      <div class="bars">${depo.map(d => { const t = d[1] + d[2] + d[3] + d[4]; return `<div class="bar-row"><span>${d[0]}</span><div class="bar">${[[d[1], 'var(--ok)'], [d[2], 'var(--accent)'], [d[3], 'var(--warn)'], [d[4], 'var(--move)']].map(p => `<i style="width:${p[0] / 720 * 100}%;background:${p[1]}"></i>`).join('')}</div><b class="num" style="text-align:right">${t}</b></div>`; }).join('')}</div>
+      <div class="legend" style="margin-top:14px"><span style="--c:var(--ok)">Depoda</span><span style="--c:var(--accent)">Zimmetli</span><span style="--c:var(--warn)">Bakımda</span><span style="--c:var(--move)">Transferde</span></div>
+    </div></section>
+    <section class="card"><div class="ch"><h2>Kritik stok</h2><a class="btn sm" href="#stok">Tümü</a></div><div class="cb" style="padding-block:4px">
+      <div class="feed"><ul>${crit.map(([s, b]) => `<li><div class="ico" style="background:var(--crit-soft);color:var(--crit)">${b[1]}</div><div><b>${s.name}</b><span class="sub muted" style="display:block;font-size:12px">${b[0]} · en az ${s.min} ${s.unit}</span></div><span class="pill p-crit">${b[1] === 0 ? 'Tükendi' : 'Kritik'}</span></li>`).join('')}</ul></div>
+    </div></section>
+  </div>
+  <section class="card"><div class="ch"><h2>Son hareketler</h2></div><div class="tw"><table>
+    <thead><tr><th>Zaman</th><th>Hareket</th><th>Kayıt</th><th>Detay</th><th>İşlemi yapan</th></tr></thead><tbody>
+    ${[['22:04', 'Zimmet', 'ZMT-2026-000417', 'NRL-TLF-000198 → Can Demir', 'Burak Kaya', 'p-zimmetli'], ['21:40', 'Transfer gönderildi', 'TRF-2026-000052', 'Gölbaşı → Ankara Merkez, 1 cihaz', 'Selin Aydın', 'p-transferde'], ['18:12', 'Sarf çıkışı', 'STK-2026-001930', 'Cat6 ağ kablosu, 120 metre → Altyapı Projeleri', 'Burak Kaya', 'p-disi'], ['16:55', 'Bakıma alındı', 'NRL-BLG-000112', 'Ekran arızası · Dell yetkili servis', 'Selin Aydın', 'p-bakimda'], ['15:30', 'İade', 'ZMT-2026-000351', 'NRL-BLG-000121 depoya döndü', 'Burak Kaya', 'p-depoda'], ['11:02', 'İmzalı evrak yüklendi', 'ZMT-2026-000412', 'tarama_0412.pdf · sürüm 1', 'Selin Aydın', 'p-depoda']].map(r => `<tr><td class="num muted">${r[0]}</td><td><span class="pill ${r[5]}">${r[1]}</span></td><td class="mono">${r[2]}</td><td>${r[3]}</td><td>${r[4]}</td></tr>`).join('')}
+    </tbody></table></div></section>`;
+};
+
+function filtered() {
+  return ASSETS.filter(a => (state.st === 'all' || a.status === state.st) && (state.cat === 'all' || a.cat === state.cat) &&
+    (!state.q || Object.values(a).join(' ').toLocaleLowerCase('tr').includes(state.q.toLocaleLowerCase('tr'))) &&
+    (state.view !== 'Telefonlar' || a.cat === 'Cep Telefonu') && (state.view !== 'Evrakı eksik' || a.doc === 'eksik'));
+}
+function cell(a, k) {
+  if (k === 'tag') return `<td class="mono"><b>${a.tag}</b></td>`;
+  if (k === 'model') return `<td>${a.brand} ${a.model}</td>`;
+  if (k === 'serial') return `<td class="mono">${a.serial}</td>`;
+  if (k === 'imei') return `<td class="mono">${a.imei || '<span class="muted">—</span>'}</td>`;
+  if (k === 'ram') return `<td>${a.ram || '<span class="muted">—</span>'}</td>`;
+  if (k === 'status') return `<td>${pill(a.status)}</td>`;
+  if (k === 'where') return `<td>${a.person ? `<b>${a.person}</b>` : a.depo}<span class="sub">${a.person ? a.depo : a.loc}</span></td>`;
+  if (k === 'doc') return `<td>${docPill(a.doc)}</td>`;
+  if (k === 'cost') return `<td class="num">${a.cost || '<span class="muted">—</span>'}</td>`;
+  return `<td>${esc(a[k])}</td>`;
+}
+function tableHTML() {
+  const cols = COLS.filter(c => c.on), rows = filtered();
+  return `<table><thead><tr>${cols.map(c => `<th>${c.l}${c.custom ? ' <span class="tag custom">özel</span>' : ''}</th>`).join('')}</tr></thead><tbody>
+  ${rows.length ? rows.map(a => `<tr class="click" data-tag="${a.tag}">${cols.map(c => cell(a, c.k)).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" style="text-align:center;padding:36px" class="muted">Bu filtrelere uyan envanter yok. Filtreleri temizleyip tekrar deneyin.</td></tr>`}
+  </tbody></table>`;
+}
+V.envanter = () => {
+  const cats = [...new Set(ASSETS.map(a => a.cat))];
+  return `<div class="head"><div class="t"><h1>Envanter</h1><p>Tekil demirbaşlar. Miktarla izlenen malzemeler <a href="#stok">Stok</a> sayfasında.</p></div>
+    <button class="btn">Dışa aktar</button><button class="btn pri" id="newAsset">+ Envanter ekle</button></div>
+  <section class="card">
+    <div class="views">${['Tüm envanter', 'Telefonlar', 'Evrakı eksik'].map(v => `<button class="${state.view === v ? 'on' : ''}" data-view="${v}">${v}</button>`).join('')}<button style="color:var(--accent)" id="saveView">+ Görünümü kaydet</button></div>
+    <div class="toolbar">
+      <label class="search" for="aq"><input id="aq" placeholder="Bu listede ara" value="${esc(state.q)}"></label>
+      <select class="chip-select" id="acat" aria-label="Kategori"><option value="all">Tüm kategoriler</option>${cats.map(c => `<option ${state.cat === c ? 'selected' : ''}>${c}</option>`).join('')}</select>
+      <div class="seg">${[['all', 'Tümü'], ...Object.entries(STATUS).map(([k, v]) => [k, v[0]])].map(([k, l]) => `<button class="${state.st === k ? 'on' : ''}" data-st="${k}">${l}</button>`).join('')}</div>
+      <div style="flex:1"></div>
+      <div class="pop-wrap"><button class="btn" id="colBtn">Sütunlar · ${COLS.filter(c => c.on).length}</button>
+      ${state.colsOpen ? `<div class="pop"><h3>Görünen sütunlar</h3>${COLS.map((c, i) => `<label><input type="checkbox" data-col="${i}" ${c.on ? 'checked' : ''} ${c.fixed ? 'disabled' : ''}> ${c.l} ${c.custom ? '<span class="tag custom">özel</span>' : ''}${c.fixed ? '<span class="tag">sabit</span>' : ''}<span class="grip">⋮⋮</span></label>`).join('')}
+      <div class="foot"><button class="btn sm pri" id="colSave">Bu görünüme kaydet</button><button class="btn sm" id="colClose">Kapat</button></div>
+      <p class="muted" style="font-size:11.5px;margin:8px 4px 0">Sütun gizlemek veriyi saklamaz; erişim yetkiyle belirlenir.</p></div>` : ''}</div>
+    </div>
+    <div class="tw" id="atable">${tableHTML()}</div>
+    <div class="toolbar" style="border-bottom:0;border-top:1px solid var(--line);font-size:12.5px;color:var(--muted)">${filtered().length} kayıt gösteriliyor · toplam 1.284</div>
+  </section>`;
+};
+
+V.varlik = () => {
+  const a = ASSETS.find(x => x.tag === state.sel) || ASSETS[0];
+  const phone = a.cat === 'Cep Telefonu';
+  return `<div class="head"><div class="t"><div class="crumb"><a href="#envanter">Envanter</a> / ${a.cat}</div>
+    <h1 class="mono" style="font-family:var(--font-mono);font-size:22px">${a.tag}</h1><p>${a.brand} ${a.model} · ${pill(a.status)}</p></div>
+    ${a.status === 'zimmetli' ? '<button class="btn">İade al</button><button class="btn">Başka personele devret</button>' : '<button class="btn">Bakıma al</button><button class="btn">Transfere ekle</button><a class="btn pri" href="#zimmetler">Zimmetle</a>'}</div>
+  <div class="grid g2">
+    <section class="card"><div class="ch"><h2>Bilgiler</h2><button class="btn sm">Düzenle</button></div><div class="cb">
+      <dl class="kv"><dt>Envanter etiketi</dt><dd class="mono">${a.tag}</dd><dt>Kategori</dt><dd>${a.cat}</dd><dt>Marka / model</dt><dd>${a.brand} ${a.model}</dd><dt>Seri numarası</dt><dd class="mono">${a.serial}</dd>
+      <dt>Şirket</dt><dd>Nurol İnşaat</dd><dt>Depo / lokasyon</dt><dd>${a.depo} · ${a.loc}</dd><dt>Zimmetli personel</dt><dd>${a.person ? `<a href="#personeller" style="color:var(--accent)">${a.person}</a>` : '<span class="muted">Yok</span>'}</dd><dt>Maliyet</dt><dd class="num">${a.cost || '<span class="muted">Girilmemiş</span>'}</dd></dl>
+      <div class="group-title">${phone ? 'Telefon alanları' : a.cat + ' alanları'} <span class="tag custom">özel alan</span></div>
+      <dl class="kv">${phone ? `<dt>IMEI 1</dt><dd class="mono">${a.imei}</dd><dt>IMEI 2</dt><dd class="mono">${a.imei2 || '<span class="muted">—</span>'}</dd><dt>Hat numarası</dt><dd class="num">${a.hat || '<span class="muted">—</span>'}</dd><dt>Renk</dt><dd>Koyu gri</dd>` : `<dt>RAM</dt><dd>${a.ram || '—'}</dd><dt>İşlemci</dt><dd>Intel Core Ultra 7 155U</dd><dt>Disk</dt><dd>1 TB NVMe</dd><dt>İşletim sistemi</dt><dd>Windows 11 Pro</dd>`}</dl>
+    </div></section>
+    <div class="grid" style="align-content:start">
+      <section class="card"><div class="ch"><h2>Hareketler</h2></div><div class="cb">
+        <ol class="timeline">
+          ${a.person ? `<li style="--c:var(--accent)"><b>${a.person} kişisine zimmetlendi</b><span class="muted">04.11.2026 10:42 · Selin Aydın · ZMT-2026-000412</span></li>` : ''}
+          <li style="--c:var(--move)"><b>Teslim alındı: ${a.depo}</b><span class="muted">21.10.2026 09:15 · Burak Kaya · TRF-2026-000044</span></li>
+          <li style="--c:var(--move)"><b>Transfere gönderildi</b><span class="muted">20.10.2026 17:02 · Gölbaşı Fabrika Deposu</span></li>
+          <li style="--c:var(--ok)"><b>Envantere eklendi</b><span class="muted">14.10.2026 13:40 · Selin Aydın</span></li>
+        </ol></div></section>
+      <section class="card"><div class="ch"><h2>Evraklar</h2></div><div class="cb" style="padding-block:4px">
+        ${a.person ? `<div class="doc-row"><div class="doc-ic">PDF</div><div class="grow"><b>Zimmet tutanağı</b><span class="sub muted" style="display:block;font-size:12px">ZMT-2026-000412 · üretilen belge, sürüm 1</span></div><button class="btn sm">İndir</button></div>
+        <div class="doc-row"><div class="doc-ic" style="color:var(--ok)">PDF</div><div class="grow"><b>İmzalı kopya</b><span class="sub muted" style="display:block;font-size:12px">tarama_0412.pdf · 1,8 MB · 04.11.2026 11:02 · SHA-256 9f2c…a71e</span></div><button class="btn sm">İndir</button></div>` : '<p class="muted" style="margin:10px 0">Bu cihaz şu an zimmetli değil. Zimmet yapıldığında tutanak burada görünür.</p>'}
+      </div></section>
+    </div>
+  </div>`;
+};
+
+V.stok = () => `<div class="head"><div class="t"><h1>Stok</h1><p>Miktarla izlenen malzemeler. Bakiye eksiye düşemez; her hareket kayıt altındadır.</p></div>
+  <button class="btn">Stok girişi</button><button class="btn">Depolar arası transfer</button><button class="btn pri" id="sarfBtn">Sarf çıkışı</button></div>
+  <div class="grid g2">
+  <section class="card"><div class="tw"><table><thead><tr><th>Malzeme</th><th>Birim</th><th>Ankara Merkez</th><th>İstanbul Şantiye</th><th>Gölbaşı Fabrika</th><th>Toplam</th></tr></thead><tbody>
+  ${STOCK.map(s => { const t = s.bal.reduce((x, b) => x + b[1], 0); return `<tr><td><b>${s.name}</b><span class="sub mono">${s.code}</span></td><td>${s.unit}</td>${s.bal.map(b => `<td class="num">${b[1] < s.min / 2 ? `<span class="pill p-crit">${b[1].toLocaleString('tr')}</span>` : b[1].toLocaleString('tr')}</td>`).join('')}<td class="num"><b>${t.toLocaleString('tr')}</b><div class="stock-meter" style="margin-top:4px"><i style="width:${Math.min(100, t / (s.min * 3) * 100)}%;background:${t < s.min ? 'var(--crit)' : 'var(--ok)'}"></i></div></td></tr>`; }).join('')}
+  </tbody></table></div></section>
+  <section class="card"><div class="ch"><h2>Sarf çıkışı</h2><span class="tag">STK-2026-001931</span></div><div class="cb">
+    <form class="form" id="sarf">
+      <label>Malzeme<select id="s-item"><option>HP 151A toner</option><option>Cat6 ağ kablosu</option></select></label>
+      <label>Depo<select id="s-depo"><option>Ankara Merkez Depo</option></select></label>
+      <label class="err">Miktar (adet)<input id="s-qty" type="number" value="6"><span class="err-msg">Ankara Merkez Depo'da 4 adet var. En fazla 4 adet çıkış yapabilirsiniz.</span></label>
+      <label>Teslim alan<select id="s-to"><option>Ayşe Korkmaz · Satın Alma Müdürlüğü</option><option>Proje: Altyapı Projeleri</option></select></label>
+      <label>Açıklama<input id="s-note" value="Kat 3 yazıcısı için"></label>
+      <div style="display:flex;gap:8px"><button class="btn pri" type="submit">Çıkışı kaydet</button><button class="btn" type="button">Vazgeç</button></div>
+      <p class="note">Sarf çıkışı zimmet değildir; personelin açık zimmet listesine girmez, sarf geçmişinde görünür.</p>
+    </form></div></section>
+  </div>`;
+
+V.zimmetler = () => {
+  const z = ZIMMETS.find(x => x.no === state.zsel), items = z.items.map(t => ASSETS.find(a => a.tag === t));
+  const up = state.uploaded[z.no];
+  return `<div class="head"><div class="t"><h1>Zimmetler</h1><p>Zimmet durumu ile imzalı evrak durumu ayrı izlenir.</p></div><button class="btn pri">+ Yeni zimmet</button></div>
+  <div class="grid g2e">
+    <section class="card"><div class="ch"><h2>Son zimmetler</h2><span class="pill p-crit">2 evrak eksik</span></div><div class="tw"><table><thead><tr><th>Zimmet no</th><th>Personel</th><th>Evrak</th></tr></thead><tbody>
+    ${ZIMMETS.map(x => `<tr class="click ${x.no === z.no ? 'sel' : ''}" data-z="${x.no}"><td class="mono">${x.no}<span class="sub">${x.date}</span></td><td><b>${x.person}</b><span class="sub">${x.items.length} cihaz · ${x.dept}</span></td><td>${docPill(state.uploaded[x.no] ? 'imzali' : x.doc)}</td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="cb" style="border-top:1px solid var(--line);display:flex;flex-direction:column;gap:12px">
+      <h3>İmzalı kopya · ${z.no}</h3>
+      ${z.doc === 'imzali' || up ? `<div class="doc-row" style="padding:0;border:0"><div class="doc-ic" style="color:var(--ok)">${up ? up.split('.').pop().toUpperCase().slice(0, 4) : 'PDF'}</div><div class="grow"><b>${up || 'tarama_' + z.no.slice(-4) + '.pdf'}</b><span class="sub muted" style="display:block;font-size:12px">Sürüm 1 · ${up ? 'şimdi' : z.date} · Selin Aydın</span></div><button class="btn sm">İndir</button></div>
+      <label class="drop" for="upl" style="padding:10px">Yeni sürüm yükle (öncekisi korunur)<input type="file" id="upl" accept=".pdf,.jpg,.jpeg,.png"></label>` :
+      `<label class="drop" for="upl"><b>İmzalı taramayı sürükleyin veya seçin</b><br><span style="font-size:12px">PDF, JPEG veya PNG · en fazla 20 MB</span><input type="file" id="upl" accept=".pdf,.jpg,.jpeg,.png"></label>`}
+    </div></section>
+    <section class="card"><div class="ch"><h2>Zimmet tutanağı</h2><button class="btn sm">PDF indir</button></div><div class="cb">
+    <div class="a4-wrap"><div class="a4">
+      <div class="dh"><div><b>DEMİRBAŞ ZİMMET TUTANAĞI</b>Nurol İnşaat</div><div style="text-align:right"><b style="font-size:12px">${z.no}</b>${z.date}</div></div>
+      <div class="meta"><div><span>Teslim alan:</span> <b>${z.person}</b></div><div><span>Sicil no:</span> ${z.sicil}</div><div><span>Unvan:</span> ${z.title}</div><div><span>Birim:</span> ${z.dept}</div><div><span>Teslim eden:</span> ${z.by}</div><div><span>Depo:</span> ${items[0].depo}</div></div>
+      <table><thead><tr><th>#</th><th>Envanter etiketi</th><th>Cihaz</th><th>Seri no</th><th>Ek bilgiler</th><th>Durum</th></tr></thead><tbody>
+      ${items.map((a, i) => `<tr><td>${i + 1}</td><td style="font-family:var(--font-mono)">${a.tag}</td><td>${a.brand} ${a.model}</td><td style="font-family:var(--font-mono)">${a.serial}</td><td>${a.imei ? 'IMEI: ' + a.imei + (a.hat ? '<br>Hat: ' + a.hat : '') : 'RAM: ' + a.ram}</td><td>Sağlam, kutulu</td></tr>`).join('')}
+      </tbody></table>
+      <p class="stmt">Yukarıda bilgileri yazılı demirbaşları sağlam ve eksiksiz olarak teslim aldım. Görevim süresince özenle kullanacağımı, görevden ayrılmam veya talep edilmesi hâlinde eksiksiz iade edeceğimi kabul ederim.</p>
+      <div class="sig"><div>Teslim eden<br><b>${z.by}</b><br><br>İmza</div><div>Teslim alan<br><b>${z.person}</b><br><br>İmza</div></div>
+      <div class="ft"><span>Belge sürümü 1 · işlem anındaki verilerle üretildi</span><span>Sayfa 1 / 1</span></div>
+    </div></div></div></section>
+  </div>`;
+};
+
+V.transferler = () => {
+  const T = [['TRF-2026-000052', 'Gölbaşı Fabrika Deposu', 'Ankara Merkez Depo', '1 cihaz', 1, '08.11.2026 21:40'], ['TRF-2026-000051', 'Ankara Merkez Depo', 'İstanbul Şantiye Deposu', '3 cihaz · 200 metre Cat6', 1, '07.11.2026 15:10'], ['TRF-2026-000053', 'Ankara Merkez Depo', 'Gölbaşı Fabrika Deposu', '12 adet USB klavye', 0, 'Taslak'], ['TRF-2026-000044', 'Gölbaşı Fabrika Deposu', 'Ankara Merkez Depo', '2 cihaz', 2, '21.10.2026 09:15']];
+  const step = n => `<div class="steps"><span class="${n > 0 ? 'done' : 'now'}">Taslak</span><i></i><span class="${n > 1 ? 'done' : n === 1 ? 'now' : ''}">Gönderildi</span><i></i><span class="${n > 1 ? 'done' : ''}">Teslim alındı</span></div>`;
+  return `<div class="head"><div class="t"><h1>Transferler</h1><p>Aynı şirketin depoları arasında. Gönderilen kalemler teslim alınana kadar başka işlemde kullanılamaz.</p></div><button class="btn pri">+ Yeni transfer</button></div>
+  <section class="card"><div class="tw"><table><thead><tr><th>Transfer no</th><th>Kaynak → hedef</th><th>Kalemler</th><th>Aşama</th><th>Son işlem</th><th></th></tr></thead><tbody>
+  ${T.map(t => `<tr><td class="mono"><b>${t[0]}</b></td><td>${t[1]}<span class="sub">→ ${t[2]}</span></td><td>${t[3]}</td><td>${step(t[4])}</td><td class="muted num">${t[5]}</td><td>${t[4] === 1 ? '<button class="btn sm pri">Teslim al</button>' : t[4] === 0 ? '<button class="btn sm">Gönder</button>' : ''}</td></tr>`).join('')}
+  </tbody></table></div></section>
+  <p class="note">Teslim almak için hedef deponun yetkisi gerekir. Kısmi teslim ilk sürümde yoktur; eksik gelen kalem varsa transfer teslim alınmaz, kaynağa iade hareketi açılır.</p>`;
+};
+
+V.personeller = () => `<div class="head"><div class="t"><h1>Personeller</h1><p>Personel kaydı giriş hesabından ayrıdır. Giriş hesabı olmayan personele de zimmet yapılabilir.</p></div>
+  <button class="btn">AD ile eşitle</button><button class="btn pri">+ Personel ekle</button></div>
+  <div class="note warn"><b>Kemal Arslan</b> son AD eşitlemesinde devre dışı olarak bulundu ve 2 açık zimmeti var. İade sürecini başlatın.</div>
+  <section class="card"><div class="tw"><table><thead><tr><th>Personel</th><th>Şirket / birim</th><th>Kaynak</th><th>Açık zimmet</th><th>Uygulama hesabı</th></tr></thead><tbody>
+  ${PEOPLE.map(p => `<tr class="click"><td><b>${p.name}</b><span class="sub">${p.mail}@nurol.com.tr</span></td><td>${p.comp}<span class="sub">${p.dept}</span></td><td><span class="tag ${p.src === 'AD' ? 'ad' : ''}">${p.src}</span></td><td class="num">${p.open ? `<b>${p.open}</b>` : '<span class="muted">0</span>'} ${p.flag ? `<span class="pill p-crit">${p.flag}</span>` : ''}</td><td>${p.acct ? `<span class="pill p-zimmetli">${p.acct}</span>` : '<span class="muted">Giriş yok</span>'}</td></tr>`).join('')}
+  </tbody></table></div></section>`;
+
+V.kategoriler = () => {
+  const cats = [['Cep Telefonu', 4], ['Dizüstü Bilgisayar', 5], ['Monitör', 2], ['Ağ Cihazı', 3], ['Tablet', 3], ['Yazıcı', 1], ['Telsiz', 2]];
+  const F = state.fcat === 'Cep Telefonu' ? [['IMEI 1', 'Metin', ['Zorunlu', 'Benzersiz · grup geneli', '15 hane']], ['IMEI 2', 'Metin', ['Benzersiz · grup geneli', '15 hane']], ['Hat numarası', 'Metin', ['Telefon biçimi']], ['Renk', 'Seçim listesi', ['Siyah, Beyaz, Koyu gri, Mavi']]] :
+    [['RAM', 'Seçim listesi', ['8 GB, 16 GB, 32 GB, 64 GB']], ['İşlemci', 'Metin', ['Zorunlu']], ['Disk', 'Metin', []], ['İşletim sistemi', 'Seçim listesi', ['Windows 11 Pro, Ubuntu']], ['Garanti bitişi', 'Tarih', []]];
+  return `<div class="head"><div class="t"><h1>Kategoriler ve Alanlar</h1><p>Alan eklemek kod değişikliği veya yeniden kurulum gerektirmez.</p></div><button class="btn">+ Kategori</button></div>
+  <div class="grid" style="grid-template-columns:minmax(0,240px) minmax(0,1fr)">
+    <section class="card" style="align-self:start"><div class="ch"><h2>Kategoriler</h2></div><div class="cat-list">${cats.map(c => `<button data-fcat="${c[0]}" class="${state.fcat === c[0] ? 'on' : ''}"><span>${c[0]}</span><span class="tag">${c[1]} alan</span></button>`).join('')}</div></section>
+    <div class="grid" style="align-content:start">
+    <section class="card"><div class="ch"><h2>${state.fcat} · varsayılan alan grubu</h2><button class="btn sm pri">+ Alan ekle</button></div>
+      <div class="field-list"><div class="fl-row h"><span></span><span>Alan</span><span>Tip</span><span>Kurallar</span><span></span></div>
+      ${F.map(f => `<div class="fl-row"><span class="grip">⋮⋮</span><b>${f[0]}</b><span>${f[1]}</span><span class="rules">${f[2].map(r => `<span class="tag">${r}</span>`).join('') || '<span class="muted">—</span>'}</span><button class="btn sm">Düzenle</button></div>`).join('')}
+      ${state.fcat === 'Cep Telefonu' ? '<div class="fl-row arch"><span class="grip">⋮⋮</span><b>Eski hat tarifesi</b><span>Metin</span><span class="rules"><span class="tag">Arşivlendi · 214 kayıtta değer var</span></span><button class="btn sm">Geri al</button></div>' : ''}
+      </div></section>
+    <section class="card"><div class="ch"><h2>Modele özel ek alanlar</h2></div><div class="cb">
+      ${state.fcat === 'Cep Telefonu' ? '<dl class="kv"><dt>Samsung Galaxy Tab Active5</dt><dd><span class="tag">Kalem seri no</span> <span class="tag">Kılıf modeli</span></dd><dt>Apple iPhone 15</dt><dd><span class="tag">eSIM</span> evet/hayır</dd></dl>' : '<p class="muted" style="margin:0">Bu kategoride modele özel ek alan yok.</p>'}
+    </div></section>
+    <div class="note warn"><b>IMEI 1 için "Zorunlu" kuralını açarsanız</b> 3 mevcut kayıtta değer eksik. Kural, bu kayıtlar tamamlanınca devreye girer; veriler kendiliğinden değiştirilmez.</div>
+    </div>
+  </div>`;
+};
+
+V.depolar = () => {
+  const W = [['Ankara Merkez Depo', 'Çankaya, Ankara', ['Raf A-01', 'Raf B-04', 'BT Odası', 'Arşiv'], 709, 6], ['İstanbul Şantiye Deposu', 'Başakşehir, İstanbul', ['Konteyner 1', 'Konteyner 2', 'Şantiye Ofisi'], 342, 2], ['Gölbaşı Fabrika Deposu', 'Gölbaşı, Ankara', ['Sistem Odası', 'İdari Bina', 'Güvenlik'], 189, 3]];
+  return `<div class="head"><div class="t"><h1>Depolar</h1><p>Nurol İnşaat · şirket → depo → lokasyon</p></div><button class="btn pri">+ Depo</button></div>
+  <div class="tree">${W.map(w => `<section class="card wh"><div><h2>${w[0]}</h2><span class="muted" style="font-size:12.5px">${w[1]}</span></div>
+    <div class="stat-line"><span><b>${w[3]}</b> tekil cihaz</span><span><b>${w[4]}</b> sarf kalemi</span></div>
+    <ul>${w[2].map(l => `<li><span>${l}</span><span class="muted">lokasyon</span></li>`).join('')}</ul><button class="btn sm" style="align-self:flex-start">+ Lokasyon</button></section>`).join('')}</div>`;
+};
+
+V.raporlar = () => `<div class="head"><div class="t"><h1>Raporlar</h1><p>Rapor ekranları 3. aşamada gelir. İlk aşamada listeler Excel olarak dışa aktarılabilir.</p></div></div>
+  <div class="tree">${[['Personel bazlı zimmet', 'Kimde hangi cihaz var, ne zamandan beri'], ['Eksik imzalı evrak', 'Yüklenmemiş imzalı tutanaklar ve bekleme süresi'], ['Sarf tüketimi', 'Birim ve proje bazında malzeme çıkışları'], ['Envanter değeri', 'Maliyet girilmiş kayıtlar üzerinden, depo bazında'], ['Ayrılan personel', "AD'de pasif olup açık zimmeti kalanlar"], ['Hareket dökümü', 'Tarih aralığına göre tüm hareketler']].map(r => `<section class="card wh"><h2>${r[0]}</h2><p class="muted" style="margin:0">${r[1]}</p><span class="tag" style="align-self:flex-start">Aşama 3</span></section>`).join('')}</div>`;
+
+V.yonetim = () => `<div class="head"><div class="t"><h1>Yönetim</h1><p>Kullanıcılar, roller ve dizin bağlantısı</p></div><button class="btn pri">+ Yerel hesap</button></div>
+  <div class="grid g2">
+  <section class="card"><div class="ch"><h2>Uygulama kullanıcıları</h2></div><div class="tw"><table><thead><tr><th>Hesap</th><th>Tür</th><th>Rol</th><th>Kapsam</th><th>Son giriş</th></tr></thead><tbody>
+  ${[['yonetici', 'Yerel', 'Sistem yöneticisi', 'Tüm şirketler', '08.11.2026 20:12'], ['selin.aydin', 'AD', 'Şirket yöneticisi', 'Nurol İnşaat', '08.11.2026 21:58'], ['burak.kaya', 'AD', 'Depo sorumlusu', 'Ankara Merkez, Gölbaşı Fabrika', '08.11.2026 22:04'], ['zeynep.celik', 'AD', 'Denetçi', 'Nurol İnşaat', '05.11.2026 10:30'], ['santiye.ist', 'Yerel', 'Depo sorumlusu', 'İstanbul Şantiye', '07.11.2026 08:41']].map(u => `<tr><td class="mono"><b>${u[0]}</b></td><td><span class="tag ${u[1] === 'AD' ? 'ad' : ''}">${u[1]}</span></td><td>${u[2]}</td><td>${u[3]}</td><td class="muted num">${u[4]}</td></tr>`).join('')}
+  </tbody></table></div></section>
+  <section class="card"><div class="ch"><h2>Active Directory</h2><span class="tag">Aşama 2</span></div><div class="cb">
+    <dl class="kv"><dt>Sunucu</dt><dd class="mono">ldaps://dc01.nurol.local:636</dd><dt>Arama kökü</dt><dd class="mono">OU=Personel,DC=nurol,DC=local</dd><dt>Personel eşitleme</dt><dd>Her gece 02:00</dd><dt>AD ile giriş</dt><dd><span class="pill p-depoda">Açık</span></dd><dt>Son eşitleme</dt><dd>08.11.2026 02:00 · 1.942 personel, 6 yeni, 1 devre dışı</dd></dl>
+    <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="btn">Bağlantıyı test et</button><button class="btn">Önizleme ile eşitle</button></div>
+  </div></section>
+  </div>`;
+
+V.giris = () => `<div class="login">
+  <div class="login-art"><div class="brand"><div class="brand-mark">NE</div><div><b>Nurol Envanter</b><small>Demirbaş · Stok · Zimmet</small></div></div>
+    <div><h1>Depodan personele, her cihazın kaydı tek yerde.</h1><p>Zimmet tutanağını üretin, imzalı kopyayı yükleyin, transferleri teslim alınana kadar izleyin.</p></div>
+    <div class="login-grid"></div><span style="font-size:12px;color:var(--nav-fg)">Prototip · <a href="#genel" style="color:#8fb4f5">uygulamaya dön</a></span></div>
+  <div class="login-form"><form class="login-box form" id="loginForm">
+    <div><h1>Giriş yap</h1><p class="muted" style="margin:4px 0 0">Hesap türünüzü seçin.</p></div>
+    <div class="seg"><button type="button" data-lt="ad" class="${state.loginType === 'ad' ? 'on' : ''}">Kurum hesabı (AD)</button><button type="button" data-lt="local" class="${state.loginType === 'local' ? 'on' : ''}">Yerel hesap</button></div>
+    <label>${state.loginType === 'ad' ? 'Kurum kullanıcı adı' : 'Kullanıcı adı'}<input id="lu" placeholder="${state.loginType === 'ad' ? 'ad.soyad' : 'yerel kullanıcı adı'}" autocomplete="username"></label>
+    <label>Parola<input id="lp" type="password" autocomplete="current-password"></label>
+    <p class="note">${state.loginType === 'ad' ? 'Windows parolanızla giriş yaparsınız. Uygulamaya erişim yöneticinin yetki vermesiyle açılır.' : 'Yerel hesaplar yönetici tarafından oluşturulur. Parolanızı unuttuysanız yöneticinize başvurun.'}</p>
+    <button class="btn pri" type="submit" style="justify-content:center;padding:10px">Giriş yap</button>
+  </form></div></div>`;
+
+function render() {
+  let r = location.hash.slice(1);
+  if (!V[r]) r = 'genel';
+  $('#root').innerHTML = r === 'giris' ? V.giris() : shell(r, V[r]());
+  window.scrollTo(0, 0);
+}
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-st],[data-view],[data-col],[data-tag],[data-z],[data-fcat],[data-lt],#colBtn,#colClose,#colSave,#saveView,#newAsset');
+  if (!t) return;
+  if (t.dataset.st) { state.st = t.dataset.st; render(); }
+  else if (t.dataset.view) { state.view = t.dataset.view; render(); }
+  else if (t.dataset.col) { COLS[+t.dataset.col].on = t.checked; $('#atable').innerHTML = tableHTML(); $('#colBtn').textContent = 'Sütunlar · ' + COLS.filter(c => c.on).length; return; }
+  else if (t.dataset.tag) { state.sel = t.dataset.tag; location.hash = 'varlik'; }
+  else if (t.dataset.z) { state.zsel = t.dataset.z; render(); }
+  else if (t.dataset.fcat) { state.fcat = t.dataset.fcat; render(); }
+  else if (t.dataset.lt) { state.loginType = t.dataset.lt; render(); }
+  else if (t.id === 'colBtn') { state.colsOpen = !state.colsOpen; render(); }
+  else if (t.id === 'colClose') { state.colsOpen = false; render(); }
+  else if (t.id === 'colSave') { state.colsOpen = false; render(); toast(`"${state.view}" görünümünün sütunları kaydedildi`); }
+  else if (t.id === 'saveView') toast('Görünüm kaydetme: ad verip filtre ve sütunlarla birlikte saklanır');
+  else if (t.id === 'newAsset') toast('Envanter ekleme formu kategoriye göre özel alanları gösterir');
+});
+document.addEventListener('input', e => {
+  if (e.target.id === 'aq') { state.q = e.target.value; $('#atable').innerHTML = tableHTML(); }
+});
+document.addEventListener('change', e => {
+  if (e.target.id === 'acat') { state.cat = e.target.value; render(); }
+  if (e.target.id === 'upl' && e.target.files[0]) {
+    const f = e.target.files[0];
+    if (f.size > 20 * 1024 * 1024) return toast('Dosya 20 MB sınırını aşıyor. Daha düşük çözünürlükte tarayın.');
+    if (!/\.(pdf|jpe?g|png)$/i.test(f.name)) return toast('Yalnızca PDF, JPEG veya PNG yüklenebilir.');
+    state.uploaded[state.zsel] = f.name; render(); toast('İmzalı kopya yüklendi (prototip: dosya hiçbir yere gönderilmez)');
+  }
+});
+document.addEventListener('submit', e => {
+  e.preventDefault();
+  if (e.target.id === 'loginForm') location.hash = 'genel';
+  if (e.target.id === 'sarf') toast('Kaydedilmedi: miktar depodaki bakiyeyi aşıyor');
+});
+window.addEventListener('hashchange', render);
+render();
+</script>
+</body>
+</html>
