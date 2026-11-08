@@ -1,9 +1,62 @@
 # Nurol Envanter
 
-Nurol grup şirketleri için demirbaş, miktarlı stok, transfer ve zimmet yönetimi. C# / .NET 10, Blazor WebAssembly, PostgreSQL, Kubernetes.
+Nurol grup şirketleri için demirbaş, miktarlı stok ve zimmet yönetimi. Türkçe arayüz; C# / .NET 10,
+Blazor WebAssembly, PostgreSQL; Kubernetes'e Helm ile kurulur.
 
 Bu klasör sıfırdan başlatılan yeni projedir; depodaki diğer dosyalarla bağlantısı yoktur.
 
-- [Tasarım](docs/tasarim.md)
-- [Aşama 1 uygulama planı](docs/plan-asama-1.md)
-- [Arayüz prototipi](docs/prototip/index.html) — tarayıcıda açılan tek dosya, örnek veriyle çalışır
+## Aşama 1'de neler var
+
+- Yerel hesaplarla giriş; dört rol (sistem yöneticisi, şirket yöneticisi, depo sorumlusu, denetçi) ve şirket/depo kapsamı
+- Şirket → depo → lokasyon tanımları
+- Kategori, marka, model; kod değiştirmeden eklenen özel alanlar (metin, sayı, tarih, seçim listesi, evet/hayır) ve kuralları
+- Tekil envanter: otomatik etiket (`NRL-TLF-000001`), arama, filtre, sıralama, sütun seçimi, CSV dışa aktarım, bakım ve kullanım dışı durumları
+- Miktarlı stok: giriş, sarf çıkışı, düzeltme; eksiye düşmeyen bakiye; kritik seviye
+- Personel kaydı (şirkete bağlı), açık zimmetler ve sarf geçmişi
+- Zimmet, iade ve devir; A4 PDF tutanak (işlem anındaki verilerle dondurulur); ıslak imzalı kopya yükleme ve sürümleme
+- Genel bakış: gerçek verilerle göstergeler, depo dağılımı, kritik stok, eksik imzalı evrak, son hareketler
+
+Transfer, Active Directory ve kayıtlı görünümler 2. aşamada; raporlar, bildirimler ve barkod 3. aşamadadır
+([tasarım](docs/tasarim.md), [plan](docs/plan-asama-1.md)).
+
+## Hızlı başlangıç
+
+```bash
+docker compose -f deploy/docker-compose.yml up --build
+# http://localhost:8080 — kullanıcı: yonetici, parola: Gelistirme123 (yalnızca deneme ortamı)
+```
+
+Geliştirme, Kubernetes kurulumu, yedekleme ve güvenlik notları için: **[Kurulum kılavuzu](docs/kurulum.md)**.
+
+## Klasör yapısı
+
+```
+src/
+  Nurol.Envanter.Shared/   API sözleşmeleri (sunucu ve arayüz ortak)
+  Nurol.Envanter.Server/   ASP.NET Core API, veri modeli, migration'lar, PDF, oturum, dosya deposu
+  Nurol.Envanter.Web/      Blazor WebAssembly arayüzü (sunucu tarafından aynı imajda yayımlanır)
+tests/
+  Nurol.Envanter.Tests/    Gerçek PostgreSQL ve S3 uyumlu depo ile entegrasyon testleri
+  e2e/akis.cjs             Playwright tarayıcı akış testi
+deploy/
+  docker-compose.yml       Yerel deneme ortamı
+  helm/nurol-envanter/     Kubernetes Helm chart'ı ve örnek değerler
+docs/                      Tasarım, plan, kurulum kılavuzu, arayüz prototipi
+Dockerfile
+```
+
+## Testler
+
+```bash
+dotnet test                                  # Docker gerekir (Testcontainers ile PostgreSQL ve SeaweedFS)
+NE_TEST_DB="Host=...;Database=...;Username=...;Password=..." dotnet test   # var olan boş bir veritabanıyla
+NE_URL=http://localhost:8080 node tests/e2e/akis.cjs                       # compose ortamı açıkken
+```
+
+## Kullanılan açık kaynak bileşenler
+
+ASP.NET Core, Entity Framework Core, Npgsql (PostgreSQL), PDFsharp-MigraDoc 6.2.4 (MIT), AWS SDK for .NET (S3),
+DejaVu Sans yazı tipi (PDF'te Türkçe karakterler için; lisansı `src/Nurol.Envanter.Server/Fonts/LICENSE-DejaVu.txt`).
+
+PDFsharp-MigraDoc 6.5 ve sonrası AGPL-3.0 lisanslıdır; bu nedenle MIT lisanslı 6.2.4 sürümüne sabitlenmiştir.
+Sürüm yükseltirken lisans kontrol edilmelidir.

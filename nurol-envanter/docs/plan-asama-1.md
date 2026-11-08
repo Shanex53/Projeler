@@ -1,5 +1,7 @@
 # Aşama 1 Uygulama Planı — Çekirdek
 
+Durum: **tamamlandı** (9 Kasım 2026). Plandan sapmalar ve doğrulama sonuçları en alttadır.
+
 Kaynak: [tasarim.md](tasarim.md). Görsel referans: [prototip/index.html](prototip/index.html).
 
 ## Çözüm yapısı
@@ -50,3 +52,15 @@ nurol-envanter/
 - Personel adı değiştirildikten sonra eski tutanak PDF'i aynı kalır.
 - İkinci imzalı kopya yüklemesi birinciyi silmez; ikisi de indirilebilir.
 - İki API pod'u arasında istek dağıldığında oturum düşmez.
+
+## Uygulama notları ve plandan sapmalar
+
+- **Proje yapısı sadeleştirildi:** Domain/Application/Infrastructure katmanları tek `Nurol.Envanter.Server` projesinde klasörlerle ayrıldı (`Data`, `Services`, `Infrastructure`, `Endpoints`). Ayrı `Migrator` projesi yerine aynı imaj `migrate` argümanıyla çalışır; Helm migration Job'u bunu kullanır.
+- **PDF kütüphanesi:** PDFsharp-MigraDoc 6.5 AGPL-3.0 lisansına geçtiği için MIT lisanslı 6.2.4 sürümüne sabitlendi.
+- **Sütun tercihleri:** Aşama 1'de tarayıcıda saklanır. Kullanıcıya özel, sunucuda kayıtlı görünümler tasarımdaki gibi Aşama 2'dedir.
+- **Devir:** iade ve yeni zimmet tek işlemde yapılır; iki ayrı tutanak üretilir.
+- **Yerel S3:** MinIO'nun Docker Hub imajı artık yayımlanmadığından compose ortamında SeaweedFS kullanıldı. Bu sırada güncel AWS SDK'nın varsayılan parçalı imza ve sağlama toplamı davranışının S3 uyumlu servislerde dosyayı bozabildiği görüldü; istemci bu özellikleri yalnızca gerektiğinde kullanacak şekilde ayarlandı ve bayt bayt doğrulayan bir test eklendi.
+- **Tarayıcı testleri:** .NET projesi yerine Node + Playwright betiği (`tests/e2e/akis.cjs`).
+- **Kubernetes doğrulaması:** Geliştirme ortamında kind çalıştırılamadı (iç içe konteyner desteği yok). Chart `helm lint`, `helm template` ve kubeconform (Kubernetes 1.31, katı mod) ile doğrulandı; konteyner salt okunur dosya sistemi ve root olmayan kullanıcıyla ayrıca denendi. Gerçek küme kurulumu kurum ortamında doğrulanmalıdır.
+
+Ayrıntılı test listesi ve kurumda doğrulanacak maddeler: [kurulum.md § 9](kurulum.md#9-doğrulama-durumu).
