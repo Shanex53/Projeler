@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "ne.fullname" . }}-ayarlar
+  labels: {{- include "ne.labels" . | nindent 4 }}
+  annotations:
+    # Migration Job'u (pre-install hook) bu ayarlara kurulumdan önce ihtiyaç duyar.
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-10"
+    helm.sh/hook-delete-policy: before-hook-creation
+data:
+  ASPNETCORE_ENVIRONMENT: {{ .Values.config.environment | quote }}
+  ASPNETCORE_HTTP_PORTS: "8080"
+  Bootstrap__AdminUserName: {{ .Values.config.bootstrapAdminUserName | quote }}
+  Security__SecureCookies: {{ .Values.config.secureCookies | quote }}
+  Security__LoginAttemptsPerMinute: {{ .Values.config.loginAttemptsPerMinute | quote }}
+  Database__MigrateOnStartup: "false"
+  Storage__Provider: {{ .Values.config.storage.provider | quote }}
+  Storage__ServiceUrl: {{ .Values.config.storage.serviceUrl | quote }}
+  Storage__Bucket: {{ .Values.config.storage.bucket | quote }}
+  Storage__Region: {{ .Values.config.storage.region | quote }}
+  Storage__ForcePathStyle: {{ .Values.config.storage.forcePathStyle | quote }}
+  {{- range $k, $v := .Values.config.extraEnv }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}

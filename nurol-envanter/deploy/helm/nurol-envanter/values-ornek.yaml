@@ -1,0 +1,28 @@
+# Örnek kurum değerleri. Kopyalayıp kendi ortamınıza göre düzenleyin:
+#   helm upgrade --install nurol-envanter deploy/helm/nurol-envanter -n envanter -f values-kurum.yaml
+image:
+  repository: registry.kurum.local/nurol/nurol-envanter
+  tag: "1.0.0"
+
+replicaCount: 2
+existingSecret: nurol-envanter-gizli
+
+config:
+  bootstrapAdminUserName: yonetici
+  storage:
+    provider: S3
+    serviceUrl: https://minio.kurum.local
+    bucket: nurol-envanter
+
+corporateCa:
+  enabled: true
+  configMap: kurum-ca
+  key: ca.crt
+
+ingress:
+  enabled: true
+  className: nginx
+  host: envanter.kurum.local
+  tls:
+    enabled: true
+    secretName: envanter-kurum-tls

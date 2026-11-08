@@ -49,6 +49,11 @@ public static class Startup
         await using var scope = sp.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var log = scope.ServiceProvider.GetRequiredService<ILogger<AppDbContext>>();
+        if (!await SchemaReadyAsync(db))
+        {
+            log.LogWarning("Veritabanı şeması güncel değil; ilk yönetici oluşturulmadı. Migration işini (migrate) çalıştırın.");
+            return;
+        }
         var adminRole = await db.Roles.FirstOrDefaultAsync(r => r.Name == Roles.SystemAdmin);
         if (adminRole is null) return; // Şema henüz kurulmamış.
         if (await db.UserRoles.AnyAsync(ur => ur.RoleId == adminRole.Id)) return;
@@ -63,5 +68,11 @@ public static class Startup
         }
         await users.AddToRoleAsync(user, Roles.SystemAdmin);
         log.LogInformation("İlk sistem yöneticisi oluşturuldu: {User}", user.UserName);
+    }
+
+    public static async Task<bool> SchemaReadyAsync(AppDbContext db)
+    {
+        try { return !(await db.Database.GetPendingMigrationsAsync()).Any(); }
+        catch (Npgsql.NpgsqlException) { return false; }
     }
 }

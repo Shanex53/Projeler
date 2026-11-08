@@ -1,0 +1,41 @@
+{{- if .Values.migration.enabled }}
+# Şema migration'ı: kurulum/yükseltmede uygulama pod'larından önce bir kez çalışır.
+# Uygulama ayrıca PostgreSQL advisory lock kullanır; iki Job aynı anda çalışsa da migration tek kez uygulanır.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "ne.fullname" . }}-migration
+  labels: {{- include "ne.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "ne.selector" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migration
+          image: {{ include "ne.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["migrate"]
+          envFrom: {{- include "ne.envFrom" . | nindent 12 }}
+          {{- with (include "ne.caEnv" .) }}
+          env: {{- . | nindent 12 }}
+          {{- end }}
+          resources: {{- toYaml .Values.migration.resources | nindent 12 }}
+          securityContext: {{- toYaml .Values.securityContext | nindent 12 }}
+          volumeMounts: {{- include "ne.volumeMounts" . | nindent 12 }}
+      volumes: {{- include "ne.volumes" . | nindent 8 }}
+{{- end }}

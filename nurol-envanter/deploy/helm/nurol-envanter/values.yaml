@@ -1,0 +1,99 @@
+# Nurol Envanter Helm değerleri. Parolalar ve erişim anahtarları bu dosyaya yazılmaz;
+# kurulumdan önce oluşturulan bir Secret'a (existingSecret) konur.
+
+image:
+  repository: registry.example.local/nurol/nurol-envanter
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+replicaCount: 2
+
+# Hassas değerlerin tutulduğu Secret. Beklenen anahtarlar:
+#   ConnectionStrings__Default   PostgreSQL bağlantı cümlesi
+#   Storage__AccessKey           Nesne deposu erişim anahtarı
+#   Storage__SecretKey           Nesne deposu gizli anahtarı
+#   Bootstrap__AdminPassword     İlk sistem yöneticisi parolası (yalnızca ilk kurulumda kullanılır)
+existingSecret: nurol-envanter-gizli
+
+# Hassas olmayan ayarlar (ConfigMap'e yazılır).
+config:
+  environment: Production
+  # İlk sistem yöneticisi kullanıcı adı. Parolası Secret'tadır. Yönetici oluşturulduktan sonra etkisizdir.
+  bootstrapAdminUserName: yonetici
+  secureCookies: true
+  loginAttemptsPerMinute: 10
+  storage:
+    provider: S3
+    serviceUrl: https://s3.kurum.local
+    bucket: nurol-envanter
+    region: us-east-1
+    forcePathStyle: true
+  # Ek ortam değişkenleri (ad: değer).
+  extraEnv: {}
+
+# Kurum CA sertifikası (PostgreSQL/S3 TLS doğrulaması için). Var olan bir ConfigMap'teki
+# PEM dosyası /etc/ssl/certs/kurum-ca.crt olarak bağlanır ve SSL_CERT_FILE ile kullanılır.
+corporateCa:
+  enabled: false
+  configMap: kurum-ca
+  key: ca.crt
+
+migration:
+  # Her kurulum/yükseltmede şemayı güncelleyen Job (Helm hook). Uygulama pod'ları migration yapmaz.
+  enabled: true
+  backoffLimit: 2
+  activeDeadlineSeconds: 600
+  resources:
+    requests: { cpu: 100m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: ""
+  annotations:
+    # Evrak yüklemeleri için (20 MB + pay).
+    nginx.ingress.kubernetes.io/proxy-body-size: "25m"
+  host: envanter.kurum.local
+  tls:
+    enabled: true
+    secretName: nurol-envanter-tls
+
+resources:
+  requests: { cpu: 100m, memory: 256Mi }
+  limits: { memory: 768Mi }
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1654
+  runAsGroup: 1654
+  fsGroup: 1654
+  seccompProfile: { type: RuntimeDefault }
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: { drop: ["ALL"] }
+
+probes:
+  startup: { path: /healthz/live, periodSeconds: 5, failureThreshold: 30 }
+  readiness: { path: /healthz/ready, periodSeconds: 10, failureThreshold: 3 }
+  liveness: { path: /healthz/live, periodSeconds: 20, failureThreshold: 3 }
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+podAnnotations: {}
+
+serviceAccount:
+  create: true
+  name: ""

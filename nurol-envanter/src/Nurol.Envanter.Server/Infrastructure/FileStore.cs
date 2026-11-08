@@ -22,6 +22,8 @@ public class StorageOptions
     public string? SecretKey { get; set; }
     public string Region { get; set; } = "us-east-1";
     public bool ForcePathStyle { get; set; } = true;
+    /// <summary>Yerel deneme ortamında kovayı otomatik oluştur. Üretimde kova önceden hazırlanır.</summary>
+    public bool CreateBucket { get; set; }
 }
 
 public class FileSystemStore(StorageOptions o) : IFileStore
@@ -60,7 +62,15 @@ public class S3Store : IFileStore
     public S3Store(StorageOptions o)
     {
         this.o = o;
-        var cfg = new AmazonS3Config { ForcePathStyle = o.ForcePathStyle, AuthenticationRegion = o.Region };
+        // S3 uyumlu servislerle (MinIO, SeaweedFS, kurumsal depolar) uyum için: parçalı imzalı gövde ve
+        // varsayılan CRC sağlama toplamları yalnızca gerektiğinde kullanılır.
+        var cfg = new AmazonS3Config
+        {
+            ForcePathStyle = o.ForcePathStyle,
+            AuthenticationRegion = o.Region,
+            RequestChecksumCalculation = Amazon.Runtime.RequestChecksumCalculation.WHEN_REQUIRED,
+            ResponseChecksumValidation = Amazon.Runtime.ResponseChecksumValidation.WHEN_REQUIRED
+        };
         if (!string.IsNullOrEmpty(o.ServiceUrl)) cfg.ServiceURL = o.ServiceUrl;
         else cfg.RegionEndpoint = Amazon.RegionEndpoint.GetBySystemName(o.Region);
         client = new AmazonS3Client(o.AccessKey, o.SecretKey, cfg);
@@ -71,9 +81,9 @@ public class S3Store : IFileStore
         using var ms = new MemoryStream(content);
         await client.PutObjectAsync(new PutObjectRequest
         {
+            // Anahtarlar sürüm + rastgele kimlik içerir; aynı anahtara ikinci kez yazılmaz.
             BucketName = o.Bucket, Key = key, InputStream = ms, ContentType = contentType,
-            // Aynı anahtara ikinci yazmayı engelle (evrak sürümleri değişmez).
-            IfNoneMatch = "*"
+            UseChunkEncoding = false
         }, ct);
     }
 
@@ -92,9 +102,28 @@ public class S3Store : IFileStore
             await client.GetBucketLocationAsync(o.Bucket, ct);
             return true;
         }
-        catch (AmazonS3Exception)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             return false;
+        }
+    }
+
+    /// <summary>Yalnızca yerel/deneme ortamı için: kova yoksa oluşturur.</summary>
+    public async Task EnsureBucketAsync(ILogger log)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await client.PutBucketAsync(o.Bucket);
+                return;
+            }
+            catch (AmazonS3Exception ex) when (ex.ErrorCode is "BucketAlreadyOwnedByYou" or "BucketAlreadyExists") { return; }
+            catch (Exception ex) when (attempt < 10 && ex is HttpRequestException or Amazon.Runtime.AmazonServiceException)
+            {
+                log.LogWarning("Nesne deposuna ulaşılamadı, tekrar denenecek ({Attempt}/10): {Message}", attempt, ex.Message);
+                await Task.Delay(TimeSpan.FromSeconds(3));
+            }
         }
     }
 }

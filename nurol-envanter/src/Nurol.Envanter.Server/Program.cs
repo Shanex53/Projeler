@@ -72,6 +72,8 @@ builder.Services.ConfigureHttpJsonOptions(o => o.SerializerOptions.Converters.Ad
 var app = builder.Build();
 
 // "migrate" argümanı: Kubernetes migration Job'u şemayı günceller ve çıkar.
+if (storage.CreateBucket && app.Services.GetRequiredService<IFileStore>() is S3Store s3)
+    await s3.EnsureBucketAsync(app.Logger);
 if (args.Contains("migrate"))
 {
     await Startup.MigrateAsync(app.Services, seedRoles: true);
@@ -82,7 +84,11 @@ if (cfg.GetValue("Database:MigrateOnStartup", app.Environment.IsDevelopment()))
     await Startup.MigrateAsync(app.Services, seedRoles: true);
 await Startup.EnsureBootstrapAdminAsync(app.Services, cfg);
 if (app.Environment.IsDevelopment() && cfg.GetValue("Seed:SampleData", false))
-    await DevSeeder.RunAsync(app.Services);
+{
+    await using var seedScope = app.Services.CreateAsyncScope();
+    if (await Startup.SchemaReadyAsync(seedScope.ServiceProvider.GetRequiredService<AppDbContext>()))
+        await DevSeeder.RunAsync(app.Services);
+}
 
 app.UseForwardedHeaders();
 app.UseMiddleware<ErrorMiddleware>();
@@ -107,8 +113,11 @@ app.MapGet("/healthz/live", () => Results.Ok("ok")).AllowAnonymous();
 app.MapGet("/healthz/ready", async (AppDbContext db, IFileStore files) =>
 {
     var dbOk = await db.Database.CanConnectAsync();
+    var schemaOk = dbOk && await Startup.SchemaReadyAsync(db);
     var filesOk = await files.PingAsync();
-    return dbOk && filesOk ? Results.Ok(new { db = "ok", storage = "ok" }) : Results.Json(new { db = dbOk, storage = filesOk }, statusCode: 503);
+    return dbOk && schemaOk && filesOk
+        ? Results.Ok(new { db = "ok", schema = "ok", storage = "ok" })
+        : Results.Json(new { db = dbOk, schema = schemaOk, storage = filesOk }, statusCode: 503);
 }).AllowAnonymous();
 
 var api = app.MapGroup("/api").RequireAuthorization();

@@ -1,0 +1,7 @@
+Nurol Envanter kuruldu.
+
+Adres: {{ if .Values.ingress.enabled }}http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.ingress.host }}{{ else }}kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ne.fullname" . }} 8080:{{ .Values.service.port }}{{ end }}
+
+İlk giriş: kullanıcı adı "{{ .Values.config.bootstrapAdminUserName }}", parola {{ .Values.existingSecret }} Secret'ındaki Bootstrap__AdminPassword.
+Migration durumu: kubectl -n {{ .Release.Namespace }} logs job/{{ include "ne.fullname" . }}-migration
+Hazırlık kontrolü: /healthz/ready (veritabanı, şema ve nesne deposu)

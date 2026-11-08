@@ -1,0 +1,63 @@
+# Yerel deneme ortamı: PostgreSQL + SeaweedFS (S3 uyumlu) + uygulama.
+# Yalnızca geliştirme/deneme içindir; örnek veri ve örnek hesaplar yüklenir.
+#   docker compose -f deploy/docker-compose.yml up --build
+#   http://localhost:8080  (kullanıcı: yonetici, parola: Gelistirme123)
+name: nurol-envanter
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: nurol_envanter
+      POSTGRES_USER: nurol
+      POSTGRES_PASSWORD: gelistirme
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nurol -d nurol_envanter"]
+      interval: 5s
+      retries: 20
+
+  # S3 uyumlu yerel nesne deposu. Üretimde kurumsal S3/MinIO kullanılır (Helm values: storage.*).
+  s3:
+    image: chrislusf/seaweedfs:3.80
+    # Küçük ve sınırlı birimler: yerel diskte gereksiz yer ayırmasın.
+    command: server -dir=/data -s3 -s3.port=8333 -master.volumeSizeLimitMB=64 -volume.max=20
+    volumes:
+      - s3data:/data
+
+  migrate:
+    build:
+      context: ..
+    command: ["migrate"]
+    environment: &appenv
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: Host=postgres;Database=nurol_envanter;Username=nurol;Password=gelistirme
+      Storage__Provider: S3
+      Storage__ServiceUrl: http://s3:8333
+      Storage__Bucket: nurol-envanter
+      Storage__AccessKey: yerel
+      Storage__SecretKey: yerel-gelistirme
+      Storage__CreateBucket: "true"
+      Security__SecureCookies: "false"
+      Database__MigrateOnStartup: "false"
+      Seed__SampleData: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      s3:
+        condition: service_started
+
+  app:
+    build:
+      context: ..
+    environment: *appenv
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  s3data:

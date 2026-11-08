@@ -1,0 +1,6 @@
+apiVersion: v2
+name: nurol-envanter
+description: Nurol Envanter Yönetim Sistemi (demirbaş, stok, zimmet)
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
