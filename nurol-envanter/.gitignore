@@ -1,0 +1,7 @@
+bin/
+obj/
+.yerel/
+*.user
+.vs/
+TestResults/
+node_modules/

@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Nurol.Envanter.Server/Nurol.Envanter.Server.csproj" />
+    <Project Path="src/Nurol.Envanter.Shared/Nurol.Envanter.Shared.csproj" />
+    <Project Path="src/Nurol.Envanter.Web/Nurol.Envanter.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Nurol.Envanter.Tests/Nurol.Envanter.Tests.csproj" />
+  </Folder>
+</Solution>
