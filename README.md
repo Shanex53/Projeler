@@ -27,8 +27,8 @@ dotnet run --project src/NurolEnvanter.Web --launch-profile http
 
 | | |
 |---|---|
-| Kullanıcı | `admin@nurol.local` |
-| Parola | `Nurol!Envanter2026` (`appsettings.Development.json`) |
+| Kullanıcı | ` |
+| Parola |  (`appsettings.Development.json`) |
 | Demo veri | 4 şirket, 8 lokasyon, 180 personel, ~730 varlık, 9 lisans, 1 sayım (kurgusal) |
 
 Veritabanı ilk çalıştırmada otomatik oluşturulur ve migration'lar uygulanır. Demo veriyi sıfırlamak için
