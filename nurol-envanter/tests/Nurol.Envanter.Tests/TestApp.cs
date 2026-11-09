@@ -50,6 +50,8 @@ public sealed class TestApp : IAsyncLifetime
         b.UseSetting("Seed:SampleData", "true");
         b.UseSetting("Database:MigrateOnStartup", "true");
         b.UseSetting("Security:LoginAttemptsPerMinute", "10000");
+        b.UseSetting("Printers:Enabled", "false");      // testlerde arka plan okuması yok; okumalar elle tetiklenir
+        b.UseSetting("Printers:TimeoutSeconds", "1");
     });
 
     public async Task DisposeAsync()

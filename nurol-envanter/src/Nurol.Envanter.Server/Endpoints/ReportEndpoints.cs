@@ -22,6 +22,7 @@ public static class ReportEndpoints
         new("deger", "Envanter değeri", "Maliyeti girilmiş tekil cihazların depo veya kategori bazında toplamı.", false, true, ["depo", "kategori"]),
         new("ayrilan", "Ayrılan personel", "Pasif durumda olup üzerinde açık zimmet kalan personel.", false, false, []),
         new("hareket", "Hareket dökümü", "Tarih aralığındaki cihaz ve stok hareketleri.", true, false, []),
+        new("yazici-sayac", "Yazıcı sayaçları", "Tarih aralığında yazıcı başına basılan sayfa (SNMP sayaç okumalarından).", true, false, []),
     ];
 
     public static void Map(RouteGroupBuilder api)
@@ -39,6 +40,7 @@ public static class ReportEndpoints
                 "deger" => await Value(db, a, groupBy ?? "depo"),
                 "ayrilan" => await Leavers(db, a),
                 "hareket" => await Movements(db, a, start, end, warehouseId),
+                "yazici-sayac" => await PrinterCounters(db, a, from, to, warehouseId),
                 _ => throw AppException.NotFound("Rapor")
             };
             if (format == "xlsx")
@@ -144,6 +146,34 @@ public static class ReportEndpoints
             [C("p", "Personel"), C("s", "Sicil"), C("b", "Birim"), C("c", "Şirket"), C("k", "Kaynak"), C("t", "Etiket"), C("d", "Cihaz"), C("sn", "Seri no"), C("w", "Depo"), C("n", "Tutanak"), C("since", "Zimmet tarihi", "date")],
             rows.Select(r => new object?[] { r.FullName, r.RegistryNo, r.Department, r.Co, r.Src == EmployeeSource.Directory ? "AD" : "Elle", r.Tag, r.Device, r.Serial, r.Wh, r.No, r.Since }).ToList(),
             [new("Personel", rows.Select(r => r.FullName + r.RegistryNo).Distinct().Count().ToString(Tr)), new("Cihaz", rows.Count.ToString(Tr))]);
+    }
+
+    static async Task<ReportTable> PrinterCounters(AppDbContext db, Access a, DateOnly? from, DateOnly? to, Guid? warehouseId)
+    {
+        var today = DateOnly.FromDateTime(TimeZones.ToLocal(DateTimeOffset.UtcNow));
+        var f = from ?? today.AddDays(-30); var t = to ?? today;
+        if (t < f) (f, t) = (t, f);
+        var printers = Nurol.Envanter.Server.Services.PrinterMonitor.Scoped(db, a);
+        if (warehouseId is Guid w) printers = printers.Where(p => p.WarehouseId == w);
+        var list = await printers.OrderBy(p => p.Warehouse!.Name).ThenBy(p => p.Name)
+            .Select(p => new { p.Id, p.Name, p.Host, p.Location, p.Model, Wh = p.Warehouse!.Name, p.PageCount }).ToListAsync();
+        var ids = list.Select(p => p.Id).ToList();
+        var counters = await db.PrinterCounters.Where(c => ids.Contains(c.PrinterId) && c.Day <= t).ToListAsync();
+        var rows = list.Select(p =>
+        {
+            var mine = counters.Where(c => c.PrinterId == p.Id).OrderBy(c => c.Day).ToList();
+            // Başlangıç: aralıktan önceki son okuma; yoksa aralıktaki ilk okumanın ilk değeri.
+            var startRow = mine.LastOrDefault(c => c.Day < f);
+            var inRange = mine.Where(c => c.Day >= f).ToList();
+            long? startCount = startRow?.LastCount ?? inRange.FirstOrDefault()?.FirstCount;
+            long? endCount = inRange.LastOrDefault()?.LastCount;
+            long? pages = startCount is long s && endCount is long e && e >= s ? e - s : null;
+            return new object?[] { p.Name, p.Location, p.Model, p.Host, p.Wh, startCount, endCount, pages, p.PageCount };
+        }).ToList();
+        return new ReportTable("Yazıcı sayaçları", $"{f:dd.MM.yyyy} – {t:dd.MM.yyyy} · sayaç sıfırlanan veya okunamayan yazıcılarda baskı sayısı boş kalır.",
+            [C("n", "Yazıcı"), C("l", "Konum"), C("m", "Model"), C("h", "Adres"), C("w", "Depo"), C("s", "Başlangıç sayacı", "number"), C("e", "Bitiş sayacı", "number"),
+             C("p", "Basılan sayfa", "number"), C("c", "Güncel sayaç", "number")],
+            rows, [new("Yazıcı", list.Count.ToString(Tr)), new("Toplam basılan", rows.Sum(r => (long?)r[7] ?? 0).ToString("#,##0", Tr) + " sayfa")]);
     }
 
     static async Task<ReportTable> Movements(AppDbContext db, Access a, DateTimeOffset start, DateTimeOffset end, Guid? warehouseId)

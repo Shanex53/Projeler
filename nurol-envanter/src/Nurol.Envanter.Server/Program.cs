@@ -67,8 +67,16 @@ builder.Services.AddScoped<Nurol.Envanter.Server.Services.DirectorySync>();
 var smtp = cfg.GetSection("Smtp").Get<Nurol.Envanter.Server.Services.SmtpOptions>() ?? new Nurol.Envanter.Server.Services.SmtpOptions();
 builder.Services.AddSingleton(smtp);
 builder.Services.AddScoped<Nurol.Envanter.Server.Services.Notifier>();
+var printers = cfg.GetSection("Printers").Get<PrinterOptions>() ?? new PrinterOptions();
+if (printers.AllowedNetworks is not { Length: > 0 }) printers.AllowedNetworks = PrinterOptions.DefaultNetworks;
+builder.Services.AddSingleton(printers);
+builder.Services.AddSingleton<IPrinterProbe, SnmpPrinterProbe>();
+builder.Services.AddScoped<Nurol.Envanter.Server.Services.PrinterMonitor>();
 if (!args.Contains("migrate") && !args.Contains("ad-sync") && !args.Contains("bildirim-ozet"))
+{
     builder.Services.AddHostedService<Nurol.Envanter.Server.Services.MailSender>();
+    builder.Services.AddHostedService<Nurol.Envanter.Server.Services.PrinterPoller>();
+}
 
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
@@ -162,6 +170,7 @@ ReportEndpoints.Map(api);
 ImportEndpoints.Map(api);
 LabelEndpoints.Map(api);
 NotificationEndpoints.Map(api);
+PrinterEndpoints.Map(api);
 api.MapFallback(() => Results.NotFound(new Nurol.Envanter.Shared.ApiError("İstenen adres bulunamadı.")));
 
 app.MapFallbackToFile("index.html");

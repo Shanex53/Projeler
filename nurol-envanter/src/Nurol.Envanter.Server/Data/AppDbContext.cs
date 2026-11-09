@@ -36,6 +36,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<DirectoryCompanyRule> DirectoryRules => Set<DirectoryCompanyRule>();
     public DbSet<DirectorySyncRun> DirectorySyncRuns => Set<DirectorySyncRun>();
     public DbSet<OutboxMail> OutboxMails => Set<OutboxMail>();
+    public DbSet<Printer> Printers => Set<Printer>();
+    public DbSet<PrinterSupplyMap> PrinterSupplyMaps => Set<PrinterSupplyMap>();
+    public DbSet<PrinterSupplyState> PrinterSupplyStates => Set<PrinterSupplyState>();
+    public DbSet<PrinterCounter> PrinterCounters => Set<PrinterCounter>();
+    public DbSet<PrinterEvent> PrinterEvents => Set<PrinterEvent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -199,6 +204,36 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             e.HasIndex(x => new { x.UserId, x.Page, x.Name }).IsUnique();
             e.Property(x => x.State).HasColumnType("jsonb");
             e.Property(x => x.Name).HasMaxLength(80);
+        });
+        b.Entity<Printer>(e =>
+        {
+            e.HasIndex(x => new { x.Host, x.Port }).IsUnique();
+            e.HasIndex(x => x.WarehouseId);
+            e.Property(x => x.Supplies).HasColumnType("jsonb");
+            e.Property(x => x.Version).IsRowVersion();
+            e.HasOne(x => x.Warehouse).WithMany().OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<PrinterSupplyMap>(e =>
+        {
+            e.HasIndex(x => new { x.PrinterId, x.SupplyKey }).IsUnique();
+            e.HasIndex(x => x.StockItemId);
+            e.HasOne<Printer>().WithMany().HasForeignKey(x => x.PrinterId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.StockItem).WithMany().OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<PrinterSupplyState>(e =>
+        {
+            e.HasKey(x => new { x.PrinterId, x.SupplyKey });
+            e.HasOne<Printer>().WithMany().HasForeignKey(x => x.PrinterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<PrinterCounter>(e =>
+        {
+            e.HasKey(x => new { x.PrinterId, x.Day });
+            e.HasOne<Printer>().WithMany().HasForeignKey(x => x.PrinterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<PrinterEvent>(e =>
+        {
+            e.HasIndex(x => new { x.PrinterId, x.At });
+            e.HasOne<Printer>().WithMany().HasForeignKey(x => x.PrinterId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<OutboxMail>(e =>
         {

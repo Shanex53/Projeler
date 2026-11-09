@@ -75,6 +75,18 @@ public class Notifier(AppDbContext db, SmtpOptions o)
         }
     }
 
+    /// <summary>Toner/sarf azaldı veya bitti: yazıcının deposundaki yetkililere, önerilen toner ve stok bilgisiyle.</summary>
+    public async Task SupplyLowAsync(Printer p, string supply, int? percent, string state, string message, string dedup)
+    {
+        foreach (var r in await WarehouseRecipients(p.WarehouseId))
+            Add("Toner", r, $"{p.Name}: {supply} {(state == "empty" ? "bitti" : $"azaldı (%{percent})")}",
+                Mail.Html($"Merhaba {r.Name},", [
+                    $"<b>{Mail.E(p.Name)}</b> yazıcısı ({Mail.E(p.Host)}{(string.IsNullOrEmpty(p.Location) ? "" : " · " + Mail.E(p.Location))}):",
+                    message
+                ], ("Yazıcıyı aç", Link($"yazicilar/{p.Id}"))),
+                $"{dedup}:{r.UserId}");
+    }
+
     public async Task DirectoryOffboardingAsync(DirectorySyncRun run, IReadOnlyList<(string Name, int OpenItems)> people)
     {
         if (people.Count == 0) return;
@@ -123,7 +135,16 @@ public class Notifier(AppDbContext db, SmtpOptions o)
             var leavers = await a.Items(db).Where(i => i.EmployeeId != null && !i.Employee!.IsActive)
                 .GroupBy(i => i.Employee!.FullName).Select(g => new { Name = g.Key, N = g.Count() }).Take(10).ToListAsync(ct);
 
-            if (missing.Count == 0 && waiting.Count == 0 && low.Count == 0 && leavers.Count == 0) continue;
+            var printerLow = await (a.IsSystemAdmin ? db.Printers : db.Printers.Where(p => a.Warehouses.Contains(p.WarehouseId)))
+                .Where(p => p.IsActive).Join(db.PrinterSupplyStates.Where(s => s.LowSince != null), p => p.Id, s => s.PrinterId, (p, s) => new { p.Name, p.Supplies, s.SupplyKey })
+                .ToListAsync(ct);
+            var printerLines = printerLow.Select(x =>
+            {
+                var sup = System.Text.Json.JsonSerializer.Deserialize<List<PrinterMonitor.StoredSupply>>(x.Supplies, System.Text.Json.JsonSerializerOptions.Web)?.FirstOrDefault(s => s.Key == x.SupplyKey);
+                var pct = sup is null ? null : PrinterMonitor.Percent(sup.Max, sup.Level);
+                return $"{x.Name} · {sup?.Description ?? x.SupplyKey}{(pct is null ? "" : $" %{pct}")}";
+            }).Take(15).ToList();
+            if (missing.Count == 0 && waiting.Count == 0 && low.Count == 0 && leavers.Count == 0 && printerLines.Count == 0) continue;
             var blocks = new List<string>();
             if (waiting.Count > 0)
                 blocks.Add($"<h3 style=\"margin:18px 0 6px\">Teslim almanızı bekleyen transfer ({waiting.Count})</h3>" +
@@ -134,6 +155,8 @@ public class Notifier(AppDbContext db, SmtpOptions o)
             if (low.Count > 0)
                 blocks.Add($"<h3 style=\"margin:18px 0 6px\">Kritik stok ({low.Count})</h3>" +
                            Mail.List(low.Select(x => $"{x.s.Name} · {x.Name}: {x.Q:0.###} {x.s.Unit} (en az {x.s.MinLevel:0.###})")));
+            if (printerLines.Count > 0)
+                blocks.Add($"<h3 style=\"margin:18px 0 6px\">Toneri azalan yazıcılar ({printerLines.Count})</h3>" + Mail.List(printerLines));
             if (leavers.Count > 0)
                 blocks.Add($"<h3 style=\"margin:18px 0 6px\">Açık zimmeti kalan pasif personel ({leavers.Count})</h3>" +
                            Mail.List(leavers.Select(l => $"{l.Name} · {l.N} cihaz")));

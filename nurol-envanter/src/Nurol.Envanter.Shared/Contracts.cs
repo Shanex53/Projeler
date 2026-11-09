@@ -152,7 +152,8 @@ public record ScopeSave(Guid CompanyId, Guid? WarehouseId);
 public record DashboardDto(
     int TotalItems, int InStock, int Assigned, int InMaintenance, int InTransit, int Retired,
     int MissingSignedDocuments, DateTimeOffset? OldestMissingSince, int PendingTransfers,
-    IReadOnlyList<WarehouseBreakdown> Warehouses, IReadOnlyList<LowStockRow> LowStock, IReadOnlyList<ActivityRow> Activity);
+    IReadOnlyList<WarehouseBreakdown> Warehouses, IReadOnlyList<LowStockRow> LowStock, IReadOnlyList<ActivityRow> Activity,
+    IReadOnlyList<PrinterWarning>? PrinterWarnings = null);
 public record WarehouseBreakdown(Guid WarehouseId, string Name, int InStock, int Assigned, int InMaintenance, int InTransit);
 public record LowStockRow(Guid StockItemId, string Name, string Unit, string WarehouseName, decimal Quantity, decimal MinLevel);
 public record ActivityRow(DateTimeOffset At, string Type, string Reference, string Text, string UserName);

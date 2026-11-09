@@ -396,3 +396,78 @@ public class OutboxMail
     public int Attempts { get; set; }
     public string? LastError { get; set; }
 }
+
+/// <summary>
+/// SNMP ile izlenen ağ yazıcısı. Envanter kaydından bağımsızdır; IP/ana bilgisayar adıyla eklenir.
+/// Son okunan durum (model, sayaç, sarf seviyeleri) burada tutulur.
+/// </summary>
+public class Printer
+{
+    public Guid Id { get; set; }
+    public Guid CompanyId { get; set; }
+    /// <summary>Kapsam ve tonerin düşüleceği depo.</summary>
+    public Guid WarehouseId { get; set; }
+    public Warehouse? Warehouse { get; set; }
+    public string Name { get; set; } = "";
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 161;
+    /// <summary>"v2c" veya "v1".</summary>
+    public string SnmpVersion { get; set; } = "v2c";
+    /// <summary>Salt okunur SNMP topluluk adı. Arayüze geri gönderilmez.</summary>
+    public string Community { get; set; } = "public";
+    public string? Location { get; set; }
+    public int LowThreshold { get; set; } = 15;
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset? LastPolledAt { get; set; }
+    public DateTimeOffset? LastSuccessAt { get; set; }
+    public bool? Online { get; set; }
+    public string? LastError { get; set; }
+    public string? Model { get; set; }
+    public string? SysName { get; set; }
+    public string? SerialNumber { get; set; }
+    public long? PageCount { get; set; }
+    /// <summary>Son okunan sarf listesi (JSON).</summary>
+    public string Supplies { get; set; } = "[]";
+    public uint Version { get; set; }
+}
+
+/// <summary>Bir yazıcı yuvasında kullanılacak toner (miktarlı stok malzemesi).</summary>
+public class PrinterSupplyMap
+{
+    public Guid Id { get; set; }
+    public Guid PrinterId { get; set; }
+    public string SupplyKey { get; set; } = "";
+    public Guid StockItemId { get; set; }
+    public StockItem? StockItem { get; set; }
+}
+
+/// <summary>Yuva bazında izleme durumu: azalma dönemi (uyarı bir kez gider) ve değişim algılama.</summary>
+public class PrinterSupplyState
+{
+    public Guid PrinterId { get; set; }
+    public string SupplyKey { get; set; } = "";
+    public int? LastPercent { get; set; }
+    public DateTimeOffset? LowSince { get; set; }
+    public bool PendingReplacement { get; set; }
+    public DateTimeOffset? LastReplacedAt { get; set; }
+}
+
+/// <summary>Günlük sayfa sayacı (gün sonu değeri). Günlük baskı = bugünkü son değer − önceki günün son değeri.</summary>
+public class PrinterCounter
+{
+    public Guid PrinterId { get; set; }
+    public DateOnly Day { get; set; }
+    public long FirstCount { get; set; }
+    public long LastCount { get; set; }
+}
+
+public class PrinterEvent
+{
+    public Guid Id { get; set; }
+    public Guid PrinterId { get; set; }
+    public DateTimeOffset At { get; set; }
+    public string Type { get; set; } = "";
+    public string Text { get; set; } = "";
+    public string UserName { get; set; } = "";
+}

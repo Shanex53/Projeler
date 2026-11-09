@@ -9,7 +9,7 @@ public static class DashboardEndpoints
 {
     public static void Map(RouteGroupBuilder api)
     {
-        api.MapGet("/dashboard", async (HttpContext ctx, AppDbContext db, Guid? companyId) =>
+        api.MapGet("/dashboard", async (HttpContext ctx, AppDbContext db, Nurol.Envanter.Server.Services.PrinterMonitor printers, Guid? companyId) =>
         {
             var a = await ctx.Access();
             var items = a.Items(db).AsNoTracking();
@@ -64,7 +64,9 @@ public static class DashboardEndpoints
                 .OrderByDescending(x => x.At).Take(10).ToList();
 
             return new DashboardDto(byStatus.Sum(x => x.Count) - S(ItemStatus.Retired), S(ItemStatus.InStock), S(ItemStatus.Assigned), S(ItemStatus.InMaintenance),
-                S(ItemStatus.InTransit), S(ItemStatus.Retired), missingCount, oldest, pending, breakdown, low, activity);
+                S(ItemStatus.InTransit), S(ItemStatus.Retired), missingCount, oldest, pending, breakdown, low, activity,
+                (await printers.RowsAsync(a, Nurol.Envanter.Server.Services.PrinterMonitor.Scoped(db, a).AsNoTracking().Where(p => p.IsActive && (companyId == null || p.CompanyId == companyId))))
+                    .SelectMany(r => r.Warnings).OrderBy(w => w.Severity == "Kritik" ? 0 : 1).ThenBy(w => w.Percent ?? 0).Take(8).ToList());
         });
     }
 }

@@ -1257,6 +1257,245 @@ namespace Nurol.Envanter.Server.Data.Migrations
                     b.ToTable("outbox_mails", (string)null);
                 });
 
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.Printer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Community")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("community");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Host")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("host");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset?>("LastPolledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_polled_at");
+
+                    b.Property<DateTimeOffset?>("LastSuccessAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_success_at");
+
+                    b.Property<string>("Location")
+                        .HasColumnType("text")
+                        .HasColumnName("location");
+
+                    b.Property<int>("LowThreshold")
+                        .HasColumnType("integer")
+                        .HasColumnName("low_threshold");
+
+                    b.Property<string>("Model")
+                        .HasColumnType("text")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("name");
+
+                    b.Property<bool?>("Online")
+                        .HasColumnType("boolean")
+                        .HasColumnName("online");
+
+                    b.Property<long?>("PageCount")
+                        .HasColumnType("bigint")
+                        .HasColumnName("page_count");
+
+                    b.Property<int>("Port")
+                        .HasColumnType("integer")
+                        .HasColumnName("port");
+
+                    b.Property<string>("SerialNumber")
+                        .HasColumnType("text")
+                        .HasColumnName("serial_number");
+
+                    b.Property<string>("SnmpVersion")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("snmp_version");
+
+                    b.Property<string>("Supplies")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("supplies");
+
+                    b.Property<string>("SysName")
+                        .HasColumnType("text")
+                        .HasColumnName("sys_name");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<Guid>("WarehouseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("warehouse_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_printers");
+
+                    b.HasIndex("WarehouseId")
+                        .HasDatabaseName("ix_printers_warehouse_id");
+
+                    b.HasIndex("Host", "Port")
+                        .IsUnique()
+                        .HasDatabaseName("ix_printers_host_port");
+
+                    b.ToTable("printers", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PrinterCounter", b =>
+                {
+                    b.Property<Guid>("PrinterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("printer_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<long>("FirstCount")
+                        .HasColumnType("bigint")
+                        .HasColumnName("first_count");
+
+                    b.Property<long>("LastCount")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_count");
+
+                    b.HasKey("PrinterId", "Day")
+                        .HasName("pk_printer_counters");
+
+                    b.ToTable("printer_counters", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PrinterEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid>("PrinterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("printer_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("type");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_printer_events");
+
+                    b.HasIndex("PrinterId", "At")
+                        .HasDatabaseName("ix_printer_events_printer_id_at");
+
+                    b.ToTable("printer_events", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PrinterSupplyMap", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("PrinterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("printer_id");
+
+                    b.Property<Guid>("StockItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_item_id");
+
+                    b.Property<string>("SupplyKey")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("supply_key");
+
+                    b.HasKey("Id")
+                        .HasName("pk_printer_supply_maps");
+
+                    b.HasIndex("StockItemId")
+                        .HasDatabaseName("ix_printer_supply_maps_stock_item_id");
+
+                    b.HasIndex("PrinterId", "SupplyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_printer_supply_maps_printer_id_supply_key");
+
+                    b.ToTable("printer_supply_maps", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PrinterSupplyState", b =>
+                {
+                    b.Property<Guid>("PrinterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("printer_id");
+
+                    b.Property<string>("SupplyKey")
+                        .HasColumnType("text")
+                        .HasColumnName("supply_key");
+
+                    b.Property<int?>("LastPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_percent");
+
+                    b.Property<DateTimeOffset?>("LastReplacedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_replaced_at");
+
+                    b.Property<DateTimeOffset?>("LowSince")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("low_since");
+
+                    b.Property<bool>("PendingReplacement")
+                        .HasColumnType("boolean")
+                        .HasColumnName("pending_replacement");
+
+                    b.HasKey("PrinterId", "SupplyKey")
+                        .HasName("pk_printer_supply_states");
+
+                    b.ToTable("printer_supply_states", (string)null);
+                });
+
             modelBuilder.Entity("Nurol.Envanter.Server.Data.SavedView", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1964,6 +2203,67 @@ namespace Nurol.Envanter.Server.Data.Migrations
                         .HasConstraintName("fk_locations_warehouses_warehouse_id");
 
                     b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.Printer", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_printers_warehouses_warehouse_id");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PrinterCounter", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Printer", null)
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_printer_counters_printers_printer_id");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PrinterEvent", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Printer", null)
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_printer_events_printers_printer_id");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PrinterSupplyMap", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Printer", null)
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_printer_supply_maps_printers_printer_id");
+
+                    b.HasOne("Nurol.Envanter.Server.Data.StockItem", "StockItem")
+                        .WithMany()
+                        .HasForeignKey("StockItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_printer_supply_maps_stock_items_stock_item_id");
+
+                    b.Navigation("StockItem");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PrinterSupplyState", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Printer", null)
+                        .WithMany()
+                        .HasForeignKey("PrinterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_printer_supply_states_printers_printer_id");
                 });
 
             modelBuilder.Entity("Nurol.Envanter.Server.Data.StockBalance", b =>
