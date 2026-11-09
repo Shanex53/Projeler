@@ -67,6 +67,8 @@ builder.Services.AddScoped<Nurol.Envanter.Server.Services.DirectorySync>();
 var smtp = cfg.GetSection("Smtp").Get<Nurol.Envanter.Server.Services.SmtpOptions>() ?? new Nurol.Envanter.Server.Services.SmtpOptions();
 builder.Services.AddSingleton(smtp);
 builder.Services.AddScoped<Nurol.Envanter.Server.Services.Notifier>();
+builder.Services.AddSingleton(cfg.GetSection("Offboarding").Get<Nurol.Envanter.Server.Services.OffboardingOptions>() ?? new Nurol.Envanter.Server.Services.OffboardingOptions());
+builder.Services.AddScoped<Nurol.Envanter.Server.Services.OffboardingService>();
 var printers = cfg.GetSection("Printers").Get<PrinterOptions>() ?? new PrinterOptions();
 if (printers.AllowedNetworks is not { Length: > 0 }) printers.AllowedNetworks = PrinterOptions.DefaultNetworks;
 builder.Services.AddSingleton(printers);
@@ -171,6 +173,8 @@ ImportEndpoints.Map(api);
 LabelEndpoints.Map(api);
 NotificationEndpoints.Map(api);
 PrinterEndpoints.Map(api);
+LineEndpoints.Map(api);
+OffboardingEndpoints.Map(api);
 api.MapFallback(() => Results.NotFound(new Nurol.Envanter.Shared.ApiError("İstenen adres bulunamadı.")));
 
 app.MapFallbackToFile("index.html");

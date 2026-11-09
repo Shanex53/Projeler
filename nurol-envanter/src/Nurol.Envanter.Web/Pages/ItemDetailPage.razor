@@ -89,6 +89,25 @@ else
             </div>
         </section>
         <div class="stack">
+            @if (lines is { Count: > 0 } || (canWrite && item.Status != ItemStatus.Retired))
+            {
+                <section class="card">
+                    <div class="ch"><h2>Takılı hatlar</h2>@if (canWrite && item.Status != ItemStatus.Retired && (lines?.Count ?? 0) < 2) { <button class="btn sm" @onclick="OpenInstall">+ Hat tak</button> }</div>
+                    <div class="cb" style="padding-block:4px">
+                        @if (lines is null || lines.Count == 0) { <p class="muted">Bu cihazda kayıtlı hat yok. Telefon veya modem ise SIM takıldığında buradan bağlayın.</p> }
+                        else
+                        {
+                            @foreach (var l in lines)
+                            {
+                                <div class="doc-row">
+                                    <div class="grow"><a class="mono" href="hatlar/@l.Id"><b>@LineLabels.Number(l.Number)</b></a> · @l.Operator<span class="muted" style="display:block;font-size:12px">@l.LineType@(l.Tariff is null ? "" : " · " + l.Tariff) · @LineLabels.Status(l.Status)</span></div>
+                                    @if (l.CanManage) { <button class="btn sm" disabled="@busy" @onclick="() => Uninstall(l)">Çıkar</button> }
+                                </div>
+                            }
+                        }
+                    </div>
+                </section>
+            }
             <section class="card">
                 <div class="ch"><h2>Evraklar</h2></div>
                 <div class="cb" style="padding-block:4px">
@@ -129,6 +148,31 @@ else
     <LabelModal Query="@($"ids={item.Id}")" Description="@($"{item.Tag} için tek etiket basılacak.")" OnClose="() => labels = false" />
 }
 
+@if (installing)
+{
+    <Modal Title="Cihaza hat tak" OnClose="() => installing = false">
+        <ChildContent>
+            <ErrorNote Error="error" />
+            @if (freeLines is null) { <div class="loading">Yükleniyor…</div> }
+            else if (freeLines.Count == 0) { <div class="note">@item!.CompanyName şirketinde bir cihaza takılı olmayan hat yok. Önce <a href="hatlar">Hatlar</a> sayfasından ekleyin.</div> }
+            else
+            {
+                <label class="fld" for="inst-line">Hat
+                    <select id="inst-line" value="@lineId" @onchange="e => lineId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">Seçin</option>
+                        @foreach (var l in freeLines) { <option value="@l.Id">@LineLabels.Number(l.Number) · @l.Operator@(l.HolderName is null ? "" : " · " + l.HolderName)</option> }
+                    </select>
+                </label>
+                <p class="muted" style="font-size:12.5px">Hat cihaza takılınca cihazın zimmetlisi hattın kullanıcısı olarak görünür ve zimmet tutanağına yazılır.</p>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => installing = false">Vazgeç</button>
+            <button class="btn pri" disabled="@(busy || lineId is null)" @onclick="Install">Tak</button>
+        </Footer>
+    </Modal>
+}
+
 @if (action is not null)
 {
     <Modal Title="@ActionTitle" OnClose="() => action = null">
@@ -154,14 +198,43 @@ else
     ItemDetail? item;
     ApiException? error;
     string? action, note;
-    bool busy, labels;
+    bool busy, labels, installing;
+    List<PhoneLineRow>? lines, freeLines;
+    Guid? lineId;
 
     protected override async Task OnParametersSetAsync() => await Load();
 
     async Task Load()
     {
-        try { item = await Api.Get<ItemDetail>($"api/items/{Id}"); error = null; }
+        try
+        {
+            item = await Api.Get<ItemDetail>($"api/items/{Id}"); error = null;
+            lines = await Api.Get<List<PhoneLineRow>>($"api/lines?itemId={Id}");
+        }
         catch (ApiException ex) { error = ex; }
+    }
+
+    async Task OpenInstall()
+    {
+        installing = true; lineId = null; freeLines = null; error = null;
+        try { freeLines = (await Api.Get<List<PhoneLineRow>>($"api/lines?companyId={item!.CompanyId}")).Where(l => l.ItemId is null && l.Status != LineStatus.Cancelled && l.CanManage).ToList(); }
+        catch (ApiException ex) { error = ex; freeLines = []; }
+    }
+
+    async Task Install()
+    {
+        busy = true;
+        try { await Api.Post<PhoneLineDetail>($"api/lines/{lineId}/install", new LineInstall(Id, null)); installing = false; Toasts.Show("Hat takıldı"); await Load(); }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Uninstall(PhoneLineRow l)
+    {
+        busy = true;
+        try { await Api.Post<PhoneLineDetail>($"api/lines/{l.Id}/install", new LineInstall(null, null)); Toasts.Show($"{LineLabels.Number(l.Number)} cihazdan çıkarıldı"); await Load(); }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
     }
 
     void Open(string a) { action = a; note = null; error = null; }
@@ -193,6 +266,6 @@ else
     static string Color(string type) => type switch
     {
         "Zimmet" => "var(--accent)", "İade" => "var(--ok)", "Bakım" => "var(--warn)", "Kayıt" => "var(--ok)",
-        "Evrak" => "var(--move)", "Transfer" => "var(--move)", "Kullanım dışı" => "var(--muted)", _ => "var(--line)"
+        "Evrak" => "var(--move)", "Transfer" => "var(--move)", "Hat" => "var(--accent)", "Kullanım dışı" => "var(--muted)", _ => "var(--line)"
     };
 }

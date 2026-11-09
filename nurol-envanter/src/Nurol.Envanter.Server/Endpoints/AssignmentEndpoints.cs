@@ -280,6 +280,8 @@ public static class AssignmentEndpoints
         var values = await db.FieldValues.Where(v => ids.Contains(v.ItemId) && !v.Field!.Archived)
             .Select(v => new { v.ItemId, v.Field!.Label, v.Field.Type, v.Field.SortOrder, v.Text }).ToListAsync();
         var wh = await db.Warehouses.Where(w => w.Id == asg.WarehouseId).Select(w => w.Name).FirstAsync();
+        var sims = await db.PhoneLines.Where(l => l.ItemId != null && ids.Contains(l.ItemId.Value) && l.Status != LineStatus.Cancelled)
+            .Select(l => new { ItemId = l.ItemId!.Value, l.Number, l.Operator }).ToListAsync();
 
         var snap = new AssignmentSnapshot(asg.No, asg.Kind, TimeZones.Format(asg.At), emp.Company!.Name, wh, emp.FullName,
             emp.RegistryNo, emp.Title, emp.Department, string.IsNullOrEmpty(a.DisplayName) ? a.UserName : a.DisplayName, asg.Note,
@@ -287,7 +289,8 @@ public static class AssignmentEndpoints
             {
                 var m = models.First(x => x.Id == i.Id);
                 var extra = string.Join("\n", values.Where(v => v.ItemId == i.Id).OrderBy(v => v.SortOrder)
-                    .Select(v => $"{v.Label}: {FieldRules.Display(v.Type, v.Text)}"));
+                    .Select(v => $"{v.Label}: {FieldRules.Display(v.Type, v.Text)}")
+                    .Concat(sims.Where(x => x.ItemId == i.Id).OrderBy(x => x.Number).Select(x => $"Hat: {LineLabels.Number(x.Number)} ({x.Operator})")));
                 return new SnapshotLine(i.Tag, $"{m.Brand} {m.Model}", i.Serial, extra.Length == 0 ? null : extra,
                     asg.Lines.First(l => l.ItemId == i.Id).Condition);
             }).ToList());

@@ -16,6 +16,10 @@
 else if (d is null) { <div class="loading">Yükleniyor…</div> }
 else
 {
+    @if (d.OpenOffboarding > 0)
+    {
+        <div class="note warn"><b>@d.OpenOffboarding açık ilişik kesme süreci</b>@(d.ReadyOffboarding > 0 ? $" · {d.ReadyOffboarding} tanesi kapatılmaya hazır" : "") · <a href="ilisik-kesme">Ayrılan personelin iadelerini takip edin</a></div>
+    }
     <div class="kpis">
         <a class="kpi" href="envanter"><span class="l">Tekil envanter</span><span class="v">@d.TotalItems.ToString("N0", Fmt.Tr)</span><span class="s">Kullanım dışılar hariç</span></a>
         <a class="kpi" href="envanter?durum=InStock"><span class="l">Depoda</span><span class="v">@d.InStock.ToString("N0", Fmt.Tr)</span><span class="s">Zimmete hazır</span></a>

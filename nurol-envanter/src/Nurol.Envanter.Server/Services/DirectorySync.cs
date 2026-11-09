@@ -14,7 +14,7 @@ namespace Nurol.Envanter.Server.Services;
 /// - Pasife alınan personelin geçmişi korunur; açık zimmeti varsa raporda belirtilir. Bağlı uygulama hesabı kapatılır, oturumları iptal edilir.
 /// - Aynı anda tek eşitleme çalışır (PostgreSQL advisory lock).
 /// </summary>
-public class DirectorySync(AppDbContext db, IDirectoryClient dir, DirectoryOptions o, Notifier notifier, ILogger<DirectorySync> log)
+public class DirectorySync(AppDbContext db, IDirectoryClient dir, DirectoryOptions o, Notifier notifier, OffboardingService offboarding, ILogger<DirectorySync> log)
 {
     const long LockKey = 472020;
 
@@ -170,6 +170,13 @@ public class DirectorySync(AppDbContext db, IDirectoryClient dir, DirectoryOptio
             var offboarded = deactivatedIds.Where(id => openItems.GetValueOrDefault(id) > 0)
                 .Select(id => (linked.Values.First(e => e.Id == id).FullName, openItems[id])).ToList();
             await notifier.DirectoryOffboardingAsync(run, offboarded);
+            // Üzerinde cihaz veya hat kalan her pasif personel için ilişik kesme süreci açılır.
+            foreach (var id in deactivatedIds)
+            {
+                var c = await offboarding.OpenAsync(linked.Values.First(e => e.Id == id), OffboardingService.SourceDirectory, userName, null, null, onlyIfHolding: true, ct);
+                if (c is not null && c.OpenedAt >= now) changes.Add(new("İlişik kesme", linked.Values.First(e => e.Id == id).FullName, $"{c.No} iade süreci başlatıldı"));
+            }
+            run.Changes = JsonSerializer.Serialize(changes.Take(1000), JsonSerializerOptions.Web);
             db.AuditEvents.Add(new AuditEvent { At = now, UserName = userName, Action = "AD eşitlemesi", Entity = "Personel",
                 Details = $"Bulunan {run.Found}, yeni {run.Created}, güncellenen {run.Updated}, pasife alınan {run.Deactivated}, eşleşmeyen {run.Unmatched}" });
         }

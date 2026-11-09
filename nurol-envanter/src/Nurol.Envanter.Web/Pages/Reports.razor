@@ -126,6 +126,7 @@
         if (v is not JsonElement e || e.ValueKind == JsonValueKind.Null) return "—";
         return c.Type switch
         {
+            "date" when e.ValueKind == JsonValueKind.String && e.GetString() is { Length: 10 } ds && DateOnly.TryParseExact(ds, "yyyy-MM-dd", out var dd) => dd.ToString("dd.MM.yyyy"),
             "date" when e.TryGetDateTimeOffset(out var d) => Fmt.Date(d),
             "datetime" when e.TryGetDateTimeOffset(out var d) => Fmt.DateTime(d),
             "money" when e.ValueKind == JsonValueKind.Number => Fmt.Money(e.GetDecimal()),

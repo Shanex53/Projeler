@@ -1,0 +1,120 @@
+@page "/ilisik-kesme"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>İlişik kesme · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>İlişik kesme</h1><p>Ayrılan personelin cihaz ve hat iadesi. AD'de devre dışı kalan veya pasife alınan personelin üzerinde cihaz ya da hat varsa süreç kendiliğinden açılır. Hepsi dönmeden ilişik kesme belgesi üretilmez.</p></div>
+    @if (Session.CanWrite) { <button class="btn pri" @onclick="OpenStart">+ Süreç başlat</button> }
+</div>
+
+<section class="card">
+    <div class="toolbar">
+        <div class="seg" role="group" aria-label="Durum">
+            <button class="@(status == OffboardingStatus.Open ? "on" : "")" @onclick="() => Set(OffboardingStatus.Open)">Açık</button>
+            <button class="@(status == OffboardingStatus.Completed ? "on" : "")" @onclick="() => Set(OffboardingStatus.Completed)">Tamamlanan</button>
+            <button class="@(status == OffboardingStatus.Cancelled ? "on" : "")" @onclick="() => Set(OffboardingStatus.Cancelled)">İptal edilen</button>
+            <button class="@(status is null ? "on" : "")" @onclick="() => Set(null)">Tümü</button>
+        </div>
+        <div class="search"><label class="sr" for="ob-q">Ara</label><input id="ob-q" @bind="q" @bind:event="oninput" @bind:after="Load" placeholder="Ad, sicil no veya süreç no" /></div>
+    </div>
+    @if (error is not null && !starting) { <div class="cb"><ErrorNote Error="error" /></div> }
+    <div class="tw">
+        <table>
+            <thead><tr><th>Süreç</th><th>Personel</th><th>Kalan</th><th>Kaynak</th><th>Durum</th></tr></thead>
+            <tbody>
+                @if (rows is null) { <tr><td colspan="5" class="empty">Yükleniyor…</td></tr> }
+                else if (rows.Count == 0) { <tr><td colspan="5" class="empty">@(status == OffboardingStatus.Open ? "Açık ilişik kesme süreci yok." : "Kayıt bulunamadı.")</td></tr> }
+                else
+                {
+                    @foreach (var r in rows)
+                    {
+                        <tr class="click" @onclick='() => Nav.NavigateTo($"ilisik-kesme/{r.Id}")'>
+                            <td class="mono"><b>@r.No</b><span class="sub">@Fmt.DateTime(r.OpenedAt)</span></td>
+                            <td>@r.EmployeeName<span class="sub">@r.CompanyName@(r.Department is null ? "" : " · " + r.Department)</span></td>
+                            <td>
+                                @if (r.Status != OffboardingStatus.Open) { <span class="muted">—</span> }
+                                else if (r.OpenItems + r.OpenLines + r.PendingTasks == 0) { <span class="pill p-ok">Kapatılabilir</span> }
+                                else
+                                {
+                                    @if (r.OpenItems > 0) { <span class="tag info">@r.OpenItems cihaz</span> }
+                                    @if (r.OpenLines > 0) { <span class="tag info">@r.OpenLines hat</span> }
+                                    @if (r.PendingTasks > 0) { <span class="tag">@r.PendingTasks görev</span> }
+                                }
+                            </td>
+                            <td>@r.Source@if (r.LastWorkingDay is not null) { <span class="sub">Son gün @r.LastWorkingDay?.ToString("dd.MM.yyyy")</span> }</td>
+                            <td><span class="pill @(r.Status switch { OffboardingStatus.Open => "p-warn", OffboardingStatus.Completed => "p-ok", _ => "p-mute" })">@OffboardingLabels.Status(r.Status)</span>
+                                @if (r.CompletedAt is not null) { <span class="sub">@Fmt.Date(r.CompletedAt.Value)</span> }</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@if (starting)
+{
+    <Modal Title="İlişik kesme süreci başlat" OnClose="() => starting = false" Wide="true">
+        <ChildContent>
+            <ErrorNote Error="error" />
+            <EmployeePicker Employees="employees" @bind-Selected="employeeId" />
+            <p class="muted" style="font-size:12.5px;margin:6px 0 0">Liste ilk 500 kişiyi gösterir; aramayla daraltın. Personel sayfasından da başlatabilirsiniz.</p>
+            <div class="form two" style="margin-top:12px">
+                <label class="fld" for="ob-day">Son çalışma günü<input id="ob-day" type="date" @bind="lastDay" /></label>
+                <label class="fld" for="ob-note">Not<input id="ob-note" @bind="note" placeholder="Ör. İK bildirimi, 30.11 itibarıyla ayrılıyor" /></label>
+            </div>
+            <p class="muted" style="font-size:12.5px">Personel aktif kalabilir; süreç açıkken üzerine yeni zimmet yapılabilir ama ilişik kesmek için hepsi iade alınmalıdır.</p>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => starting = false">Vazgeç</button>
+            <button class="btn pri" disabled="@(busy || employeeId is null)" @onclick="Start">Başlat</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    List<OffboardingRow>? rows;
+    List<EmployeeDto> employees = [];
+    OffboardingStatus? status = OffboardingStatus.Open;
+    string? q, note;
+    DateOnly? lastDay;
+    Guid? employeeId;
+    bool starting, busy;
+    ApiException? error;
+
+    protected override Task OnInitializedAsync() => Load();
+
+    async Task Set(OffboardingStatus? s) { status = s; await Load(); }
+
+    async Task Load()
+    {
+        var p = new List<string>();
+        if (status is not null) p.Add($"status={status}");
+        if (!string.IsNullOrWhiteSpace(q)) p.Add("q=" + Uri.EscapeDataString(q.Trim()));
+        try { rows = await Api.Get<List<OffboardingRow>>("api/offboarding" + (p.Count == 0 ? "" : "?" + string.Join("&", p))); error = null; }
+        catch (ApiException ex) { error = ex; rows ??= []; }
+    }
+
+    async Task OpenStart()
+    {
+        starting = true; error = null; employeeId = null; lastDay = null; note = null;
+        try { employees = (await Api.Get<PagedResult<EmployeeDto>>("api/employees?includeInactive=true&pageSize=500")).Items.ToList(); } catch (ApiException ex) { error = ex; }
+    }
+
+    async Task Start()
+    {
+        busy = true; error = null;
+        try
+        {
+            var r = await Api.Post<System.Text.Json.JsonElement>("api/offboarding", new OffboardingStart(employeeId!.Value, lastDay, note));
+            starting = false;
+            Toasts.Show("İlişik kesme süreci başlatıldı");
+            Nav.NavigateTo($"ilisik-kesme/{r.GetProperty("id").GetGuid()}");
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

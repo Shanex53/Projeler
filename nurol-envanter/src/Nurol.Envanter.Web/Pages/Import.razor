@@ -13,6 +13,7 @@ else
     <div class="seg" role="tablist" style="align-self:flex-start">
         <button role="tab" aria-selected="@(kind == "items")" class="@(kind == "items" ? "on" : "")" @onclick='() => Switch("items")'>Envanter</button>
         <button role="tab" aria-selected="@(kind == "employees")" class="@(kind == "employees" ? "on" : "")" @onclick='() => Switch("employees")'>Personel</button>
+        <button role="tab" aria-selected="@(kind == "lines")" class="@(kind == "lines" ? "on" : "")" @onclick='() => Switch("lines")'>Telefon hattı</button>
     </div>
 
     <section class="card">
@@ -37,8 +38,16 @@ else
                         @foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }
                     </select>
                 </label>
-                <a class="btn" style="align-self:flex-end" href="api/import/employees/template" download>Şablonu indir (.xlsx)</a>
-                <p class="muted" style="margin:0;flex-basis:100%;font-size:12.5px">AD kullanılıyorsa personel AD eşitlemesiyle gelir; bu sayfa AD dışındaki personel içindir.</p>
+                @if (kind == "lines")
+                {
+                    <a class="btn" style="align-self:flex-end" href="api/import/lines/template" download>Şablonu indir (.xlsx)</a>
+                    <p class="muted" style="margin:0;flex-basis:100%;font-size:12.5px">Numara, operatör ve hat tipi zorunludur. Personel sicil numarasıyla, cihaz envanter etiketiyle eşlenir (ikisi de seçilen şirkette olmalı).</p>
+                }
+                else
+                {
+                    <a class="btn" style="align-self:flex-end" href="api/import/employees/template" download>Şablonu indir (.xlsx)</a>
+                    <p class="muted" style="margin:0;flex-basis:100%;font-size:12.5px">AD kullanılıyorsa personel AD eşitlemesiyle gelir; bu sayfa AD dışındaki personel içindir.</p>
+                }
             }
         </div>
     </section>
@@ -101,8 +110,11 @@ else
     Guid? Target => kind == "items" ? categoryId : companyId;
     static Guid? G(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
 
+    [SupplyParameterFromQuery(Name = "tur")] public string? Tur { get; set; }
+
     protected override async Task OnInitializedAsync()
     {
+        if (Tur is "lines" or "employees") kind = Tur;
         categories = await Api.Get<List<CategoryDto>>("api/categories");
         companies = await Api.Get<List<CompanyDto>>("api/companies");
         if (companies.Count == 1) companyId = companies[0].Id;
@@ -129,7 +141,13 @@ else
         {
             using var content = new MultipartFormDataContent();
             content.Add(new ByteArrayContent(file), "file", fileName ?? "dosya.xlsx");
-            var url = kind == "items" ? $"api/import/items?categoryId={categoryId}&commit={commit.ToString().ToLower()}" : $"api/import/employees?companyId={companyId}&commit={commit.ToString().ToLower()}";
+            var c = commit.ToString().ToLower();
+            var url = kind switch
+            {
+                "items" => $"api/import/items?categoryId={categoryId}&commit={c}",
+                "lines" => $"api/import/lines?companyId={companyId}&commit={c}",
+                _ => $"api/import/employees?companyId={companyId}&commit={c}"
+            };
             result = await Api.Upload<ImportResult>(url, content);
             if (result.Committed) { Toasts.Show($"{result.Created.Count} kayıt eklendi"); file = null; }
         }

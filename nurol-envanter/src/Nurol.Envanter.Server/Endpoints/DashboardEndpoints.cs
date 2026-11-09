@@ -63,10 +63,14 @@ public static class DashboardEndpoints
             activity = activity.Concat(recentTransfers.Select(t => new ActivityRow(t.At, t.Status == TransferStatus.Received ? "Transfer teslim alındı" : "Transfer gönderildi", t.No, $"{t.Src} → {t.Tgt}", t.By)))
                 .OrderByDescending(x => x.At).Take(10).ToList();
 
+            var cases = await db.OffboardingCases.Where(c => c.Status == OffboardingStatus.Open && (a.IsSystemAdmin || a.Companies.Contains(c.CompanyId)) && (companyId == null || c.CompanyId == companyId))
+                .Select(c => new { Ready = !db.Items.Any(i => i.EmployeeId == c.EmployeeId) && !db.PhoneLines.Any(l => l.EmployeeId == c.EmployeeId && l.Status != LineStatus.Cancelled) && c.Tasks.All(t => t.Done) })
+                .ToListAsync();
             return new DashboardDto(byStatus.Sum(x => x.Count) - S(ItemStatus.Retired), S(ItemStatus.InStock), S(ItemStatus.Assigned), S(ItemStatus.InMaintenance),
                 S(ItemStatus.InTransit), S(ItemStatus.Retired), missingCount, oldest, pending, breakdown, low, activity,
                 (await printers.RowsAsync(a, Nurol.Envanter.Server.Services.PrinterMonitor.Scoped(db, a).AsNoTracking().Where(p => p.IsActive && (companyId == null || p.CompanyId == companyId))))
-                    .SelectMany(r => r.Warnings).OrderBy(w => w.Severity == "Kritik" ? 0 : 1).ThenBy(w => w.Percent ?? 0).Take(8).ToList());
+                    .SelectMany(r => r.Warnings).OrderBy(w => w.Severity == "Kritik" ? 0 : 1).ThenBy(w => w.Percent ?? 0).Take(8).ToList(),
+                cases.Count, cases.Count(c => c.Ready));
         });
     }
 }

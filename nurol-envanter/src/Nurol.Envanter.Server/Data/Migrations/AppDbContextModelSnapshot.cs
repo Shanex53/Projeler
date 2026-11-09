@@ -1187,6 +1187,127 @@ namespace Nurol.Envanter.Server.Data.Migrations
                     b.ToTable("manufacturers", (string)null);
                 });
 
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.OffboardingCase", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CancelReason")
+                        .HasColumnType("text")
+                        .HasColumnName("cancel_reason");
+
+                    b.Property<string>("CertificateKey")
+                        .HasColumnType("text")
+                        .HasColumnName("certificate_key");
+
+                    b.Property<string>("CertificateSha256")
+                        .HasColumnType("text")
+                        .HasColumnName("certificate_sha256");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<string>("CompletedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("completed_by");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<DateOnly?>("LastWorkingDay")
+                        .HasColumnType("date")
+                        .HasColumnName("last_working_day");
+
+                    b.Property<string>("No")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("no");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<DateTimeOffset>("OpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opened_at");
+
+                    b.Property<string>("OpenedBy")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("opened_by");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("source");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id")
+                        .HasName("pk_offboarding_cases");
+
+                    b.HasIndex("No")
+                        .IsUnique()
+                        .HasDatabaseName("ix_offboarding_cases_no");
+
+                    b.HasIndex(new[] { "EmployeeId" }, "ix_offboarding_cases_employee_id")
+                        .HasDatabaseName("ix_offboarding_cases_employee_id");
+
+                    b.HasIndex(new[] { "EmployeeId" }, "ux_offboarding_cases_open_employee")
+                        .IsUnique()
+                        .HasDatabaseName("ux_offboarding_cases_open_employee")
+                        .HasFilter("status = 0");
+
+                    b.ToTable("offboarding_cases", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.OffboardingTask", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CaseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("case_id");
+
+                    b.Property<bool>("Done")
+                        .HasColumnType("boolean")
+                        .HasColumnName("done");
+
+                    b.Property<DateTimeOffset?>("DoneAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("done_at");
+
+                    b.Property<string>("DoneBy")
+                        .HasColumnType("text")
+                        .HasColumnName("done_by");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("title");
+
+                    b.HasKey("Id")
+                        .HasName("pk_offboarding_tasks");
+
+                    b.HasIndex("CaseId")
+                        .HasDatabaseName("ix_offboarding_tasks_case_id");
+
+                    b.ToTable("offboarding_tasks", (string)null);
+                });
+
             modelBuilder.Entity("Nurol.Envanter.Server.Data.OutboxMail", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1255,6 +1376,146 @@ namespace Nurol.Envanter.Server.Data.Migrations
                         .HasDatabaseName("ix_outbox_mails_sent_at_send_after");
 
                     b.ToTable("outbox_mails", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PhoneLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateOnly?>("ContractEnd")
+                        .HasColumnType("date")
+                        .HasColumnName("contract_end");
+
+                    b.Property<string>("CostCenter")
+                        .HasColumnType("text")
+                        .HasColumnName("cost_center");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<string>("Iccid")
+                        .HasColumnType("text")
+                        .HasColumnName("iccid");
+
+                    b.Property<Guid?>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<string>("LineType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("line_type");
+
+                    b.Property<decimal?>("MonthlyFee")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("monthly_fee");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("text")
+                        .HasColumnName("notes");
+
+                    b.Property<string>("Number")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("number");
+
+                    b.Property<string>("Operator")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("operator");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Tariff")
+                        .HasColumnType("text")
+                        .HasColumnName("tariff");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_phone_lines");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_phone_lines_company_id");
+
+                    b.HasIndex("EmployeeId")
+                        .HasDatabaseName("ix_phone_lines_employee_id");
+
+                    b.HasIndex("Iccid")
+                        .IsUnique()
+                        .HasDatabaseName("ix_phone_lines_iccid")
+                        .HasFilter("iccid IS NOT NULL");
+
+                    b.HasIndex("ItemId")
+                        .HasDatabaseName("ix_phone_lines_item_id");
+
+                    b.HasIndex("Number")
+                        .IsUnique()
+                        .HasDatabaseName("ix_phone_lines_number");
+
+                    b.ToTable("phone_lines", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PhoneLineEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
+
+                    b.Property<Guid>("LineId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("line_id");
+
+                    b.Property<string>("Text")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("text");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("type");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_phone_line_events");
+
+                    b.HasIndex("LineId", "At")
+                        .HasDatabaseName("ix_phone_line_events_line_id_at");
+
+                    b.ToTable("phone_line_events", (string)null);
                 });
 
             modelBuilder.Entity("Nurol.Envanter.Server.Data.Printer", b =>
@@ -2205,6 +2466,66 @@ namespace Nurol.Envanter.Server.Data.Migrations
                     b.Navigation("Warehouse");
                 });
 
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.OffboardingCase", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_offboarding_cases_employees_employee_id");
+
+                    b.Navigation("Employee");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.OffboardingTask", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.OffboardingCase", null)
+                        .WithMany("Tasks")
+                        .HasForeignKey("CaseId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_offboarding_tasks_offboarding_cases_case_id");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PhoneLine", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_phone_lines_companies_company_id");
+
+                    b.HasOne("Nurol.Envanter.Server.Data.Employee", "Employee")
+                        .WithMany()
+                        .HasForeignKey("EmployeeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_phone_lines_employees_employee_id");
+
+                    b.HasOne("Nurol.Envanter.Server.Data.InventoryItem", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_phone_lines_items_item_id");
+
+                    b.Navigation("Company");
+
+                    b.Navigation("Employee");
+
+                    b.Navigation("Item");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.PhoneLineEvent", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.PhoneLine", null)
+                        .WithMany()
+                        .HasForeignKey("LineId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_phone_line_events_phone_lines_line_id");
+                });
+
             modelBuilder.Entity("Nurol.Envanter.Server.Data.Printer", b =>
                 {
                     b.HasOne("Nurol.Envanter.Server.Data.Warehouse", "Warehouse")
@@ -2413,6 +2734,11 @@ namespace Nurol.Envanter.Server.Data.Migrations
             modelBuilder.Entity("Nurol.Envanter.Server.Data.InventoryItem", b =>
                 {
                     b.Navigation("FieldValues");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.OffboardingCase", b =>
+                {
+                    b.Navigation("Tasks");
                 });
 
             modelBuilder.Entity("Nurol.Envanter.Server.Data.StockItem", b =>

@@ -22,6 +22,7 @@ public static class ReportEndpoints
         new("deger", "Envanter değeri", "Maliyeti girilmiş tekil cihazların depo veya kategori bazında toplamı.", false, true, ["depo", "kategori"]),
         new("ayrilan", "Ayrılan personel", "Pasif durumda olup üzerinde açık zimmet kalan personel.", false, false, []),
         new("hareket", "Hareket dökümü", "Tarih aralığındaki cihaz ve stok hareketleri.", true, false, []),
+        new("hatlar", "Telefon hatları ve maliyet", "Hatlar kimde, hangi cihazda; aylık ücret toplamları operatör, birim veya masraf yerine göre.", false, true, ["hat", "operator", "birim", "masraf"]),
         new("yazici-sayac", "Yazıcı sayaçları", "Tarih aralığında yazıcı başına basılan sayfa (SNMP sayaç okumalarından).", true, false, []),
     ];
 
@@ -41,6 +42,7 @@ public static class ReportEndpoints
                 "ayrilan" => await Leavers(db, a),
                 "hareket" => await Movements(db, a, start, end, warehouseId),
                 "yazici-sayac" => await PrinterCounters(db, a, from, to, warehouseId),
+                "hatlar" => await Lines(db, a, groupBy ?? "hat"),
                 _ => throw AppException.NotFound("Rapor")
             };
             if (format == "xlsx")
@@ -146,6 +148,34 @@ public static class ReportEndpoints
             [C("p", "Personel"), C("s", "Sicil"), C("b", "Birim"), C("c", "Şirket"), C("k", "Kaynak"), C("t", "Etiket"), C("d", "Cihaz"), C("sn", "Seri no"), C("w", "Depo"), C("n", "Tutanak"), C("since", "Zimmet tarihi", "date")],
             rows.Select(r => new object?[] { r.FullName, r.RegistryNo, r.Department, r.Co, r.Src == EmployeeSource.Directory ? "AD" : "Elle", r.Tag, r.Device, r.Serial, r.Wh, r.No, r.Since }).ToList(),
             [new("Personel", rows.Select(r => r.FullName + r.RegistryNo).Distinct().Count().ToString(Tr)), new("Cihaz", rows.Count.ToString(Tr))]);
+    }
+
+    static async Task<ReportTable> Lines(AppDbContext db, Access a, string groupBy)
+    {
+        var rows = await LineEndpoints.Rows(a, LineEndpoints.Scoped(db, a).AsNoTracking().Where(l => l.Status != LineStatus.Cancelled).OrderBy(l => l.Number));
+        var total = rows.Sum(r => r.MonthlyFee ?? 0);
+        List<ReportSummary> summary = [new("Hat", rows.Count.ToString(Tr)), new("Aylık toplam", total.ToString("#,##0.00", Tr) + " ₺"),
+            new("Boşta", rows.Count(r => r.HolderId is null).ToString(Tr))];
+        if (groupBy == "hat")
+            return new ReportTable("Telefon hatları", "İptal edilen hatlar hariç.",
+                [C("n", "Numara"), C("o", "Operatör"), C("t", "Hat tipi"), C("ta", "Tarife"), C("f", "Aylık ücret", "money"), C("s", "Durum"), C("p", "Kullanan"),
+                 C("b", "Birim"), C("d", "Cihaz"), C("i", "ICCID"), C("m", "Masraf yeri"), C("c", "Şirket"), C("e", "Sözleşme bitişi", "date")],
+                rows.Select(r => new object?[] { LineLabels.Number(r.Number), r.Operator, r.LineType, r.Tariff, r.MonthlyFee, LineLabels.Status(r.Status), r.HolderName,
+                    r.HolderDepartment, r.ItemTag, r.Iccid, r.CostCenter, r.CompanyName, r.ContractEnd }).ToList(), summary);
+        Func<PhoneLineRow, string> key = groupBy switch
+        {
+            "operator" => r => r.Operator,
+            "birim" => r => r.HolderDepartment ?? (r.HolderId is null ? "(boşta)" : "(birimi yok)"),
+            _ => r => r.CostCenter ?? "(masraf yeri yok)"
+        };
+        var label = groupBy switch { "operator" => "Operatör", "birim" => "Birim", _ => "Masraf yeri" };
+        return new ReportTable($"Hat maliyeti · {label.ToLower(Tr)}", "İptal edilen hatlar hariç; aylık ücreti girilmemiş hatlar toplama katılmaz.",
+            [C("g", label), C("n", "Hat", "number"), C("a", "Aktif", "number"), C("s", "Askıda", "number"), C("f", "Aylık toplam", "money"), C("y", "Yıllık tahmini", "money")],
+            rows.GroupBy(key).OrderByDescending(g => g.Sum(r => r.MonthlyFee ?? 0)).Select(g => new object?[]
+            {
+                g.Key, g.Count(), g.Count(r => r.Status == LineStatus.Active), g.Count(r => r.Status == LineStatus.Suspended),
+                g.Sum(r => r.MonthlyFee ?? 0), g.Sum(r => r.MonthlyFee ?? 0) * 12
+            }).ToList(), summary);
     }
 
     static async Task<ReportTable> PrinterCounters(AppDbContext db, Access a, DateOnly? from, DateOnly? to, Guid? warehouseId)

@@ -1,0 +1,122 @@
+@page "/hatlar"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>Hatlar · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Telefon hatları</h1><p>Hat numarası, operatör, tarife ve SIM; hangi cihazda takılı ve kimde olduğu. Cihaza takılı hat, cihazın zimmetlisinde sayılır.</p></div>
+    @if (Session.CanWrite)
+    {
+        <a class="btn" href="toplu-ekleme?tur=lines">Excel ile ekle</a>
+        <a class="btn" href="raporlar?r=hatlar">Maliyet raporu</a>
+        <button class="btn pri" @onclick="() => adding = true">+ Hat ekle</button>
+    }
+</div>
+
+<section class="card">
+    <div class="toolbar">
+        <div class="search"><label class="sr" for="ln-q">Ara</label><input id="ln-q" @bind="q" @bind:event="oninput" @bind:after="Debounce" placeholder="Numara, ICCID, kişi, etiket, tarife" /></div>
+        <select class="sel-in" aria-label="Durum" value="@(status?.ToString() ?? "")" @onchange="e => { status = Enum.TryParse<LineStatus>(e.Value?.ToString(), out var s) ? s : null; return Load(); }">
+            <option value="">Tüm durumlar</option>
+            @foreach (var s in Enum.GetValues<LineStatus>()) { <option value="@s">@LineLabels.Status(s)</option> }
+        </select>
+        <select class="sel-in" aria-label="Operatör" value="@(op ?? "")" @onchange="e => { op = string.IsNullOrEmpty(e.Value?.ToString()) ? null : e.Value!.ToString(); return Load(); }">
+            <option value="">Tüm operatörler</option>
+            @foreach (var o in LineLabels.Operators) { <option>@o</option> }
+        </select>
+        @if (companies.Count > 1)
+        {
+            <select class="sel-in" aria-label="Şirket" value="@companyId" @onchange="e => { companyId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; return Load(); }">
+                <option value="">Tüm şirketler</option>
+                @foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }
+            </select>
+        }
+        <label class="chk" style="display:flex;gap:6px;align-items:center;font-size:13px"><input type="checkbox" checked="@free" @onchange="e => { free = (bool)e.Value!; return Load(); }" /> Yalnız boştakiler</label>
+    </div>
+    @if (error is not null) { <div class="cb"><ErrorNote Error="error" /></div> }
+    <div class="tw">
+        <table>
+            <thead><tr><th>Numara</th><th>Operatör / tarife</th><th>Kimde</th><th>Cihaz</th><th class="right">Aylık</th><th>Durum</th></tr></thead>
+            <tbody>
+                @if (rows is null) { <tr><td colspan="6" class="empty">Yükleniyor…</td></tr> }
+                else if (rows.Count == 0) { <tr><td colspan="6" class="empty">@(Filtered ? "Filtreye uyan hat yok." : "Henüz hat eklenmedi.")</td></tr> }
+                else
+                {
+                    @foreach (var l in rows)
+                    {
+                        <tr class="click" @onclick='() => Nav.NavigateTo($"hatlar/{l.Id}")'>
+                            <td class="mono"><b>@LineLabels.Number(l.Number)</b><span class="sub">@(l.Iccid ?? "SIM no yok")</span></td>
+                            <td>@l.Operator<span class="sub">@l.LineType@(l.Tariff is null ? "" : " · " + l.Tariff)</span></td>
+                            <td>@if (l.HolderName is null) { <span class="muted">Boşta</span> } else { @l.HolderName<span class="sub">@(l.HolderDepartment ?? "")@(l.EmployeeId is null ? " · cihaz üzerinden" : "")</span> }</td>
+                            <td>@if (l.ItemTag is null) { <span class="muted">—</span> } else { <span class="mono">@l.ItemTag</span><span class="sub">@l.ItemModel</span> }</td>
+                            <td class="num right">@Fmt.Money(l.MonthlyFee)</td>
+                            <td>
+                                <span class="pill @(l.Status switch { LineStatus.Active => "p-ok", LineStatus.Suspended => "p-warn", _ => "p-mute" })">@LineLabels.Status(l.Status)</span>
+                                @if (l.ContractEndingSoon) { <span class="pill p-warn" title="Sözleşme bitişi">@l.ContractEnd?.ToString("dd.MM.yyyy")</span> }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (rows is { Count: > 0 })
+    {
+        <div class="toolbar foot">
+            <span>@rows.Count hat · aylık toplam <b>@Fmt.Money(rows.Where(r => r.Status != LineStatus.Cancelled).Sum(r => r.MonthlyFee ?? 0))</b> · boşta @rows.Count(r => r.HolderId is null && r.Status != LineStatus.Cancelled)</span>
+        </div>
+    }
+</section>
+
+@if (adding)
+{
+    <LineEditor Companies="companies" OnClose="() => adding = false" OnSaved="Saved" />
+}
+
+@code {
+    List<PhoneLineRow>? rows;
+    List<CompanyDto> companies = [];
+    string? q, op;
+    LineStatus? status;
+    Guid? companyId;
+    bool free, adding;
+    ApiException? error;
+    CancellationTokenSource? debounce;
+    bool Filtered => !string.IsNullOrWhiteSpace(q) || op is not null || status is not null || companyId is not null || free;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try { companies = (await Api.Get<List<CompanyDto>>("api/companies")).Where(c => !c.Archived).ToList(); } catch (ApiException) { }
+        await Load();
+    }
+
+    async Task Debounce()
+    {
+        debounce?.Cancel();
+        debounce = new CancellationTokenSource();
+        var token = debounce.Token;
+        try { await Task.Delay(250, token); } catch (TaskCanceledException) { return; }
+        await Load();
+    }
+
+    async Task Load()
+    {
+        var p = new List<string>();
+        if (!string.IsNullOrWhiteSpace(q)) p.Add("q=" + Uri.EscapeDataString(q.Trim()));
+        if (status is not null) p.Add($"status={status}");
+        if (op is not null) p.Add("op=" + Uri.EscapeDataString(op));
+        if (companyId is not null) p.Add($"companyId={companyId}");
+        if (free) p.Add("free=true");
+        try { rows = await Api.Get<List<PhoneLineRow>>("api/lines" + (p.Count == 0 ? "" : "?" + string.Join("&", p))); error = null; }
+        catch (ApiException ex) { error = ex; rows ??= []; }
+    }
+
+    void Saved(PhoneLineDetail d)
+    {
+        adding = false;
+        Toasts.Show($"{LineLabels.Number(d.Line.Number)} eklendi");
+        Nav.NavigateTo($"hatlar/{d.Line.Id}");
+    }
+}

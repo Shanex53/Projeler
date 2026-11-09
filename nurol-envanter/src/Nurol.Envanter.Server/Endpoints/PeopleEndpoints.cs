@@ -54,7 +54,7 @@ public static class PeopleEndpoints
             return Results.Ok(new { e.Id });
         });
 
-        api.MapPut("/employees/{id:guid}", async (Guid id, EmployeeSave req, HttpContext ctx, AppDbContext db) =>
+        api.MapPut("/employees/{id:guid}", async (Guid id, EmployeeSave req, HttpContext ctx, AppDbContext db, Nurol.Envanter.Server.Services.OffboardingService offboarding) =>
         {
             var a = await ctx.Access();
             var e = await a.Employees(db).FirstOrDefaultAsync(x => x.Id == id) ?? throw AppException.NotFound("Personel");
@@ -64,6 +64,7 @@ public static class PeopleEndpoints
             {
                 if (!a.CanWriteCompany(req.CompanyId)) throw AppException.Forbidden("Hedef şirkette yetkiniz yok.");
                 if (openCount > 0) throw AppException.Conflict($"Personelin {openCount} açık zimmeti var. Şirket değişikliğinden önce cihazları iade alın.");
+                if (await db.PhoneLines.AnyAsync(l => l.EmployeeId == id)) throw AppException.Conflict("Personelde hat var. Şirket değişikliğinden önce hatları geri alın.");
                 e.CompanyId = req.CompanyId;
             }
             if (!req.IsActive && e.IsActive && openCount > 0)
@@ -71,8 +72,12 @@ public static class PeopleEndpoints
                 // Pasife alınabilir ama açık zimmetler listede işaretli kalır.
                 Audit.Add(db, a, "Pasife alma (açık zimmetli)", "Personel", e.Id, $"{e.FullName} · {openCount} açık zimmet");
             }
+            var deactivating = !req.IsActive && e.IsActive;
             Apply(e, req);
             Audit.Add(db, a, "Güncelleme", "Personel", e.Id, e.FullName);
+            // Üzerinde cihaz veya hat kalan personel pasife alınınca ilişik kesme süreci kendiliğinden açılır.
+            if (deactivating)
+                await offboarding.OpenAsync(e, Nurol.Envanter.Server.Services.OffboardingService.SourceDeactivated, a.UserName, null, null, onlyIfHolding: true);
             await db.SaveChangesAsync();
             return Results.NoContent();
         });

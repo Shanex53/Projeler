@@ -1,0 +1,186 @@
+@page "/hatlar/{Id:guid}"
+@inject Api Api
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>@(d is null ? "Hat" : LineLabels.Number(d.Line.Number)) · Nurol Envanter</PageTitle>
+@if (d is null)
+{
+    @if (error is not null) { <ErrorNote Error="error" /> } else { <div class="loading">Yükleniyor…</div> }
+}
+else
+{
+    var l = d.Line;
+    var cancelled = l.Status == LineStatus.Cancelled;
+    <div class="head">
+        <div class="t">
+            <div class="crumb"><a href="hatlar">Hatlar</a> / @l.CompanyName</div>
+            <h1 style="font-family:var(--mono)">@LineLabels.Number(l.Number)</h1>
+            <p>@l.Operator · @l.LineType · <span class="pill @(l.Status switch { LineStatus.Active => "p-ok", LineStatus.Suspended => "p-warn", _ => "p-mute" })">@LineLabels.Status(l.Status)</span></p>
+        </div>
+        @if (l.CanManage)
+        {
+            <button class="btn" @onclick="() => editing = true">Düzenle</button>
+            @if (!cancelled)
+            {
+                @if (l.ItemId is null) { <button class="btn" @onclick='() => Open("install")'>Cihaza tak</button> }
+                else { <button class="btn" disabled="@busy" @onclick="() => Install(null)">Cihazdan çıkar</button> }
+                @if (l.EmployeeId is null) { <button class="btn pri" @onclick='() => Open("assign")'>Personele ver</button> }
+                else
+                {
+                    <button class="btn" @onclick='() => Open("assign")'>Başka personele ver</button>
+                    <button class="btn pri" disabled="@busy" @onclick="() => Assign(null)">Geri al</button>
+                }
+            }
+        }
+    </div>
+    <ErrorNote Error="error" />
+    @if (l.ContractEndingSoon) { <div class="note warn">Sözleşme @l.ContractEnd?.ToString("dd.MM.yyyy") tarihinde bitiyor.</div> }
+    @if (l.EmployeeId is not null && l.ItemId is not null && l.HolderId != l.EmployeeId)
+    {
+        <div class="note warn">Hat doğrudan @l.EmployeeName kişisine verilmiş ama takılı olduğu cihaz başka birinde.</div>
+    }
+
+    <div class="grid g2">
+        <section class="card">
+            <div class="ch"><h2>Bilgiler</h2></div>
+            <div class="cb">
+                <dl class="kv">
+                    <dt>Kullanan</dt>
+                    <dd>
+                        @if (l.HolderId is null) { <span class="muted">Boşta</span> }
+                        else
+                        {
+                            <a href="personeller/@l.HolderId">@l.HolderName</a>
+                            <span class="muted">@(l.EmployeeId is null ? " · takılı olduğu cihazın zimmetlisi" : " · doğrudan verildi")</span>
+                        }
+                    </dd>
+                    <dt>Cihaz</dt><dd>@if (l.ItemId is null) { <span class="muted">Takılı değil</span> } else { <a class="mono" href="envanter/@l.ItemId">@l.ItemTag</a> <span class="muted">· @l.ItemModel</span> }</dd>
+                    <dt>Tarife</dt><dd>@(l.Tariff ?? "—")</dd>
+                    <dt>Aylık ücret</dt><dd class="num">@Fmt.Money(l.MonthlyFee)</dd>
+                    <dt>SIM (ICCID)</dt><dd class="mono">@(l.Iccid ?? "—")</dd>
+                    <dt>Masraf yeri</dt><dd>@(l.CostCenter ?? "—")</dd>
+                    <dt>Sözleşme bitişi</dt><dd>@(l.ContractEnd?.ToString("dd.MM.yyyy") ?? "—")</dd>
+                    <dt>Şirket</dt><dd>@l.CompanyName</dd>
+                    @if (d.Notes is not null) { <dt>Not</dt><dd>@d.Notes</dd> }
+                </dl>
+            </div>
+        </section>
+        <section class="card">
+            <div class="ch"><h2>Geçmiş</h2></div>
+            <div class="cb">
+                <ol class="timeline">
+                    @foreach (var e in d.Events)
+                    {
+                        <li><b>@e.Type</b><span style="display:block;font-size:13px">@e.Text</span><span class="muted" style="font-size:12px">@Fmt.DateTime(e.At) · @e.UserName</span></li>
+                    }
+                </ol>
+            </div>
+        </section>
+    </div>
+}
+
+@if (editing && d is not null)
+{
+    <LineEditor Existing="d" Companies="companies" OnClose="() => editing = false" OnSaved="Saved" />
+}
+
+@if (dialog is not null && d is not null)
+{
+    <Modal Title="@(dialog == "assign" ? "Hattı personele ver" : "Hattı cihaza tak")" OnClose="() => dialog = null">
+        <ChildContent>
+            <ErrorNote Error="error" />
+            @if (dialog == "assign")
+            {
+                <EmployeePicker Employees="employees" @bind-Selected="employeeId" />
+                <p class="muted" style="font-size:12.5px">Yalnızca @d.Line.CompanyName personeli listelenir. Telefona takılı hatlar için hattı cihaza takmanız yeterlidir; cihaz kime zimmetliyse hat da onda görünür.</p>
+            }
+            else
+            {
+                <label class="fld" for="ln-item">Cihaz etiketi, seri no veya IMEI
+                    <input id="ln-item" class="mono" @bind="itemCode" placeholder="NRL-TLF-000012" />
+                </label>
+                <p class="muted" style="font-size:12.5px">Cihaz @d.Line.CompanyName şirketinde olmalı. Bir cihaza en fazla iki hat takılabilir.</p>
+            }
+            <label class="fld" for="ln-note">Not (isteğe bağlı)<input id="ln-note" @bind="note" /></label>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => dialog = null">Vazgeç</button>
+            @if (dialog == "assign") { <button class="btn pri" disabled="@(busy || employeeId is null)" @onclick="() => Assign(employeeId)">Ver</button> }
+            else { <button class="btn pri" disabled="@(busy || string.IsNullOrWhiteSpace(itemCode))" @onclick="FindAndInstall">Tak</button> }
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    PhoneLineDetail? d;
+    List<CompanyDto> companies = [];
+    List<EmployeeDto> employees = [];
+    ApiException? error;
+    bool editing, busy;
+    string? dialog, note, itemCode;
+    Guid? employeeId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Load();
+        try { companies = await Api.Get<List<CompanyDto>>("api/companies"); } catch (ApiException) { }
+    }
+
+    async Task Load()
+    {
+        try { d = await Api.Get<PhoneLineDetail>($"api/lines/{Id}"); }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task Open(string what)
+    {
+        dialog = what; note = null; error = null; employeeId = null; itemCode = null;
+        if (what == "assign")
+        {
+            try { employees = (await Api.Get<PagedResult<EmployeeDto>>($"api/employees?companyId={d!.Line.CompanyId}&pageSize=500")).Items.Where(e => e.IsActive && e.CompanyId == d!.Line.CompanyId && e.Id != d.Line.EmployeeId).ToList(); }
+            catch (ApiException ex) { error = ex; }
+        }
+    }
+
+    async Task Assign(Guid? emp)
+    {
+        busy = true; error = null;
+        try
+        {
+            d = await Api.Post<PhoneLineDetail>($"api/lines/{Id}/assign", new LineAssign(emp, note));
+            dialog = null;
+            Toasts.Show(emp is null ? "Hat geri alındı" : $"Hat {d.Line.EmployeeName} kişisine verildi");
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task FindAndInstall()
+    {
+        busy = true; error = null;
+        try
+        {
+            var r = await Api.Get<LookupResult>($"api/items/lookup?code={Uri.EscapeDataString(itemCode!.Trim())}");
+            await Install(r.ItemId);
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Install(Guid? itemId)
+    {
+        busy = true; error = null;
+        try
+        {
+            d = await Api.Post<PhoneLineDetail>($"api/lines/{Id}/install", new LineInstall(itemId, note));
+            dialog = null;
+            Toasts.Show(itemId is null ? "Hat cihazdan çıkarıldı" : $"Hat {d.Line.ItemTag} cihazına takıldı");
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    void Saved(PhoneLineDetail x) { editing = false; d = x; Toasts.Show("Hat kaydedildi"); }
+}

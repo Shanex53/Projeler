@@ -1,0 +1,99 @@
+@inject Api Api
+
+<Modal Title="@(Existing is null ? "Hat ekle" : "Hattı düzenle")" OnClose="OnClose" Wide="true">
+    <ChildContent>
+        <ErrorNote Error="error" />
+        <div class="form two">
+            <label class="fld" for="ln-co">Şirket
+                <select id="ln-co" value="@f.CompanyId" disabled="@(Existing is not null)" @onchange="e => f.CompanyId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : Guid.Empty">
+                    <option value="">Seçin</option>
+                    @foreach (var c in Companies) { <option value="@c.Id">@c.Name</option> }
+                </select>
+            </label>
+            <label class="fld" for="ln-no">Numara *
+                <input id="ln-no" @bind="f.Number" placeholder="0532 418 27 60" inputmode="tel" />
+                @if (error?.For("number") is string ne) { <span class="err-msg">@ne</span> }
+            </label>
+            <label class="fld" for="ln-op">Operatör *
+                <select id="ln-op" @bind="f.Operator">
+                    <option value="">Seçin</option>
+                    @foreach (var o in LineLabels.Operators) { <option>@o</option> }
+                </select>
+            </label>
+            <label class="fld" for="ln-type">Hat tipi *
+                <select id="ln-type" @bind="f.LineType">
+                    <option value="">Seçin</option>
+                    @foreach (var t in LineLabels.Types) { <option>@t</option> }
+                </select>
+            </label>
+            <label class="fld" for="ln-tariff">Tarife<input id="ln-tariff" @bind="f.Tariff" placeholder="Kurumsal 20 GB" /></label>
+            <label class="fld" for="ln-fee">Aylık ücret (₺)<input id="ln-fee" type="number" step="0.01" min="0" @bind="f.MonthlyFee" /></label>
+            <label class="fld" for="ln-iccid">SIM seri no (ICCID)
+                <input id="ln-iccid" class="mono" @bind="f.Iccid" placeholder="8990..." inputmode="numeric" />
+                @if (error?.For("iccid") is string ie) { <span class="err-msg">@ie</span> }
+            </label>
+            <label class="fld" for="ln-status">Durum
+                <select id="ln-status" @bind="f.Status">
+                    @foreach (var s in Enum.GetValues<LineStatus>()) { <option value="@s">@LineLabels.Status(s)</option> }
+                </select>
+            </label>
+            <label class="fld" for="ln-cc">Masraf yeri<input id="ln-cc" @bind="f.CostCenter" /></label>
+            <label class="fld" for="ln-end">Sözleşme bitişi<input id="ln-end" type="date" @bind="f.ContractEnd" /></label>
+            <label class="fld" for="ln-notes" style="grid-column:1/-1">Not<textarea id="ln-notes" rows="2" @bind="f.Notes"></textarea></label>
+        </div>
+        @if (f.Status == LineStatus.Cancelled && Existing?.Line.HolderId is not null && Existing.Line.EmployeeId is not null)
+        {
+            <div class="note warn">İptal edilen hat @Existing.Line.EmployeeName kişisinden düşülür.</div>
+        }
+    </ChildContent>
+    <Footer>
+        <button class="btn" @onclick="OnClose">Vazgeç</button>
+        <button class="btn pri" disabled="@busy" @onclick="Save">@(busy ? "Kaydediliyor…" : "Kaydet")</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public PhoneLineDetail? Existing { get; set; }
+    [Parameter] public List<CompanyDto> Companies { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<PhoneLineDetail> OnSaved { get; set; }
+
+    class Form
+    {
+        public Guid CompanyId; public string Number = ""; public string Operator = ""; public string LineType = "";
+        public string? Tariff; public decimal? MonthlyFee; public string? Iccid; public LineStatus Status = LineStatus.Active;
+        public string? CostCenter; public DateOnly? ContractEnd; public string? Notes;
+    }
+    Form f = new();
+    ApiException? error;
+    bool busy;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is { } d)
+        {
+            var l = d.Line;
+            f = new Form { CompanyId = l.CompanyId, Number = LineLabels.Number(l.Number), Operator = l.Operator, LineType = l.LineType, Tariff = l.Tariff,
+                MonthlyFee = l.MonthlyFee, Iccid = l.Iccid, Status = l.Status, CostCenter = l.CostCenter, ContractEnd = l.ContractEnd, Notes = d.Notes };
+        }
+        else
+        {
+            f.LineType = LineLabels.Types[0];
+            if (Companies.Count(c => !c.Archived) == 1) f.CompanyId = Companies.First(c => !c.Archived).Id;
+        }
+    }
+
+    async Task Save()
+    {
+        if (f.CompanyId == Guid.Empty) { error = new ApiException("Şirket seçin."); return; }
+        busy = true; error = null;
+        try
+        {
+            var body = new PhoneLineSave(f.CompanyId, f.Number, f.Operator, f.LineType, f.Tariff, f.MonthlyFee, f.Iccid, f.Status, f.CostCenter, f.ContractEnd, f.Notes, Existing?.Version);
+            var r = Existing is null ? await Api.Post<PhoneLineDetail>("api/lines", body) : await Api.Put<PhoneLineDetail>($"api/lines/{Existing.Line.Id}", body);
+            await OnSaved.InvokeAsync(r);
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

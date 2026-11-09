@@ -127,11 +127,39 @@ public static class DevSeeder
         await Item(ank, l7450, blg, "3MZ8R14", "BT Odası", 71500, new() { [ram.Id] = "16 GB", [cpu.Id] = "Intel Core Ultra 7 165U" });
         await Item(mkd, a55, tlf, "R58X21KQ9ZZ", "Ana Depo", 18450, new() { [imei1.Id] = "352093114857550" });
 
+        // Telefon hatları: cihazlara takılı olanlar zimmet tutanağına da yazılır.
+        PhoneLine Line(Company c, string number, string op, string type, string tariff, decimal fee, string iccid, Guid? item = null, Guid? emp = null, string? cc = null, int? endDays = null)
+        {
+            var l = new PhoneLine { Id = Guid.NewGuid(), CompanyId = c.Id, Number = number, Operator = op, LineType = type, Tariff = tariff, MonthlyFee = fee, Iccid = iccid,
+                Status = LineStatus.Active, ItemId = item, EmployeeId = emp, CostCenter = cc, CreatedAt = DateTimeOffset.UtcNow.AddDays(-25),
+                ContractEnd = endDays is int d ? DateOnly.FromDateTime(DateTime.Today).AddDays(d) : null };
+            db.PhoneLines.Add(l);
+            LineEndpoints.Event(db, l.Id, "Kayıt", $"{LineLabels.Number(number)} · {op} · {type}", sys.UserName);
+            return l;
+        }
+        Line(ins, "05324182760", "Turkcell", "Ses + Data", "Kurumsal Platinum 20 GB", 389.90m, "8990011234567890123", i1.Id, cc: "Genel Müdürlük", endDays: 21);
+        Line(ins, "05339021145", "Turkcell", "Ses + Data", "Kurumsal 10 GB", 289.90m, "8990011234567890131", (await db.Items.FirstAsync(x => x.Serial == "G6TZ81PQ0D")).Id, cc: "İstanbul Şantiyesi");
+        Line(ins, "05326507409", "Vodafone", "Ses + Data", "Red Kurumsal 15 GB", 345.00m, "8990270012345678901", i6.Id, cc: "Ankara Şantiyesi");
+        Line(ins, "05301175238", "Türk Telekom", "Yalnız ses", "Kurumsal Ses 1000 dk", 149.90m, "8990011234567890149", i10.Id, cc: "Gölbaşı Tesisi");
+        Line(ins, "05441203377", "Vodafone", "Yalnız data", "Mobil İnternet 50 GB", 219.00m, "8990270012345678919", emp: mehmet.Id, cc: "Bilgi Teknolojileri");
+        Line(ins, "05056664422", "Turkcell", "M2M / IoT", "M2M 1 GB", 39.90m, "8990011234567890156", cc: "Güvenlik");
+        Line(ins, "05358889911", "Türk Telekom", "Ses + Data", "Kurumsal 10 GB", 259.00m, "8990011234567890164", cc: "Genel Müdürlük");
+        await db.SaveChangesAsync();
+
         await AssignmentEndpoints.Issue(db, files, sys, ayse.Id, [i1.Id], null, null, null);
         await AssignmentEndpoints.Issue(db, files, sys, mehmet.Id, [i2.Id], new Dictionary<Guid, string> { [i2.Id] = "Sağlam, çantalı" }, null, null);
         await AssignmentEndpoints.Issue(db, files, sys, can.Id, [i6.Id], null, "Şantiye için", null);
         await AssignmentEndpoints.Issue(db, files, sys, elif.Id, [i8.Id], null, null, null);
         await AssignmentEndpoints.Issue(db, files, sys, hasan.Id, [i10.Id], null, null, null);
+        // Ayrılan personel örneği: Hasan pasife alındı; telefonu ve hattı iade bekliyor.
+        var leaver = await db.Employees.FirstAsync(x => x.Id == hasan.Id);
+        leaver.IsActive = false;
+        var oc = new OffboardingCase { Id = Guid.NewGuid(), No = await Counters.DocumentNoAsync(db, "ILS", DateTimeOffset.UtcNow), Status = OffboardingStatus.Open,
+            CompanyId = leaver.CompanyId, EmployeeId = leaver.Id, Source = "Personel pasife alındı", LastWorkingDay = DateOnly.FromDateTime(DateTime.Today).AddDays(-1),
+            OpenedAt = DateTimeOffset.UtcNow.AddHours(-20), OpenedBy = sys.UserName, Note = "İK bildirimi" };
+        oc.Tasks.Add(new OffboardingTask { Id = Guid.NewGuid(), CaseId = oc.Id, Title = "Giriş kartı teslim alındı" });
+        oc.Tasks.Add(new OffboardingTask { Id = Guid.NewGuid(), CaseId = oc.Id, Title = "E-posta yönlendirmesi yapıldı", Done = true, DoneAt = DateTimeOffset.UtcNow.AddHours(-2), DoneBy = "Burak Kaya" });
+        db.OffboardingCases.Add(oc);
         var maint = await db.Items.FirstAsync(x => x.Id == i4.Id);
         maint.Status = ItemStatus.InMaintenance; maint.MaintenanceNote = "Ekran arızası · Dell yetkili servis";
         ItemEndpoints.Event(db, maint.Id, "Bakım", "Bakıma alındı: Ekran arızası · Dell yetkili servis", sys.UserName);

@@ -26,10 +26,17 @@ else
                 <a class="btn" href="zimmetler/iade?personel=@e.Id">İade al</a>
                 <a class="btn" href="zimmetler/devir?personel=@e.Id">Devret</a>
             }
+            @if (openCase is null) { <button class="btn" disabled="@busy" @onclick="StartOffboarding">İlişik kesme başlat</button> }
             @if (e.IsActive) { <a class="btn pri" href="zimmetler/yeni?personel=@e.Id">+ Zimmetle</a> }
         }
     </div>
-    @if (!e.IsActive && d.OpenItems.Count > 0) { <div class="note warn">Personel pasif durumda ama üzerinde @d.OpenItems.Count açık zimmet var.</div> }
+    <ErrorNote Error="actionError" />
+    @if (openCase is not null)
+    {
+        <div class="note warn"><b>İlişik kesme süreci açık</b> (<a class="mono" href="ilisik-kesme/@openCase.Id">@openCase.No</a>):
+            @(openCase.OpenItems + openCase.OpenLines + openCase.PendingTasks == 0 ? "tüm kalemler tamam, süreç kapatılabilir." : $"{openCase.OpenItems} cihaz, {openCase.OpenLines} hat ve {openCase.PendingTasks} görev bekliyor.")</div>
+    }
+    else if (!e.IsActive && d.OpenItems.Count > 0) { <div class="note warn">Personel pasif durumda ama üzerinde @d.OpenItems.Count açık zimmet var.</div> }
 
     <div class="grid g2">
         <div class="stack">
@@ -84,6 +91,31 @@ else
                 </div>
             </section>
             <section class="card">
+                <div class="ch"><h2>Hatlar</h2><span class="tag">@lines.Count</span></div>
+                <div class="cb" style="padding-block:4px">
+                    @if (lines.Count == 0) { <p class="muted">Kullandığı hat yok.</p> }
+                    @foreach (var l in lines)
+                    {
+                        <div class="doc-row"><div class="grow"><a class="mono" href="hatlar/@l.Id"><b>@LineLabels.Number(l.Number)</b></a> · @l.Operator
+                            <span class="muted" style="display:block;font-size:12px">@(l.EmployeeId == Id ? "Doğrudan verildi" : "Cihazda") @(l.ItemTag is null ? "" : "· " + l.ItemTag) @(l.Tariff is null ? "" : "· " + l.Tariff)</span></div></div>
+                    }
+                </div>
+            </section>
+            @if (pastCases.Count > 0)
+            {
+                <section class="card">
+                    <div class="ch"><h2>İlişik kesme</h2></div>
+                    <div class="cb" style="padding-block:4px">
+                        @foreach (var oc in pastCases)
+                        {
+                            <div class="doc-row"><div class="grow"><a class="mono" href="ilisik-kesme/@oc.Id"><b>@oc.No</b></a> · @OffboardingLabels.Status(oc.Status)
+                                <span class="muted" style="display:block;font-size:12px">@Fmt.Date(oc.OpenedAt)@(oc.CompletedAt is null ? "" : " – " + Fmt.Date(oc.CompletedAt.Value))</span></div>
+                                @if (oc.Status == OffboardingStatus.Completed) { <a class="btn sm" href="api/offboarding/@oc.Id/certificate" download>Belge</a> }</div>
+                        }
+                    </div>
+                </section>
+            }
+            <section class="card">
                 <div class="ch"><h2>Sarf geçmişi</h2></div>
                 <div class="cb" style="padding-block:4px">
                     @if (d.Consumption.Count == 0) { <p class="muted">Bu personele sarf çıkışı yapılmamış.</p> }
@@ -107,7 +139,11 @@ else
     EmployeeDetail? d;
     List<CompanyDto> companies = [];
     EmployeeEditor.EmpForm? form;
-    ApiException? error;
+    ApiException? error, actionError;
+    List<PhoneLineRow> lines = [];
+    List<OffboardingRow> pastCases = [];
+    OffboardingRow? openCase;
+    bool busy;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -117,8 +153,27 @@ else
 
     async Task Load()
     {
-        try { d = await Api.Get<EmployeeDetail>($"api/employees/{Id}"); }
+        try
+        {
+            d = await Api.Get<EmployeeDetail>($"api/employees/{Id}");
+            lines = await Api.Get<List<PhoneLineRow>>($"api/lines?employeeId={Id}&status=Active");
+            lines.AddRange((await Api.Get<List<PhoneLineRow>>($"api/lines?employeeId={Id}&status=Suspended")));
+            pastCases = await Api.Get<List<OffboardingRow>>($"api/offboarding?employeeId={Id}");
+            openCase = pastCases.FirstOrDefault(c => c.Status == OffboardingStatus.Open);
+        }
         catch (ApiException ex) { error = ex; }
+    }
+
+    async Task StartOffboarding()
+    {
+        busy = true; actionError = null;
+        try
+        {
+            var r = await Api.Post<System.Text.Json.JsonElement>("api/offboarding", new OffboardingStart(Id, null, null));
+            Nav.NavigateTo($"ilisik-kesme/{r.GetProperty("id").GetGuid()}");
+        }
+        catch (ApiException ex) { actionError = ex; }
+        finally { busy = false; }
     }
 
     async Task Saved() { form = null; Toasts.Show("Personel kaydedildi"); await Load(); }

@@ -471,3 +471,77 @@ public class PrinterEvent
     public string Text { get; set; } = "";
     public string UserName { get; set; } = "";
 }
+
+/// <summary>Kurumsal GSM hattı / SIM. Bir cihaza takılı olabilir (ItemId) ve/veya doğrudan bir personele verilmiş olabilir (EmployeeId).</summary>
+public class PhoneLine
+{
+    public Guid Id { get; set; }
+    public Guid CompanyId { get; set; }
+    public Company? Company { get; set; }
+    /// <summary>Yalnız rakam, başında 0 ile 11 hane (ör. 05324182760).</summary>
+    public string Number { get; set; } = "";
+    public string Operator { get; set; } = "";
+    public string LineType { get; set; } = "";
+    public string? Tariff { get; set; }
+    public decimal? MonthlyFee { get; set; }
+    /// <summary>SIM seri numarası (ICCID, 19-20 hane).</summary>
+    public string? Iccid { get; set; }
+    public LineStatus Status { get; set; }
+    public Guid? ItemId { get; set; }
+    public InventoryItem? Item { get; set; }
+    public Guid? EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
+    public string? CostCenter { get; set; }
+    public DateOnly? ContractEnd { get; set; }
+    public string? Notes { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public uint Version { get; set; }
+}
+
+public class PhoneLineEvent
+{
+    public Guid Id { get; set; }
+    public Guid LineId { get; set; }
+    public DateTimeOffset At { get; set; }
+    public string Type { get; set; } = "";
+    public string Text { get; set; } = "";
+    public string UserName { get; set; } = "";
+    /// <summary>Hattın verildiği/geri alındığı personel (ilişik kesme kontrol listesi için).</summary>
+    public Guid? EmployeeId { get; set; }
+}
+
+/// <summary>
+/// İlişik kesme süreci: ayrılan personelin üzerindeki cihaz ve hatların iadesi ile elle eklenen görevler.
+/// Hepsi tamamlanmadan kapatılamaz ve ilişik kesme belgesi üretilmez. Personel başına tek açık süreç olur.
+/// </summary>
+public class OffboardingCase
+{
+    public Guid Id { get; set; }
+    public string No { get; set; } = "";
+    public OffboardingStatus Status { get; set; }
+    public Guid CompanyId { get; set; }
+    public Guid EmployeeId { get; set; }
+    public Employee? Employee { get; set; }
+    /// <summary>"AD eşitlemesi", "Personel pasife alındı" veya "Elle".</summary>
+    public string Source { get; set; } = "";
+    public DateOnly? LastWorkingDay { get; set; }
+    public string? Note { get; set; }
+    public DateTimeOffset OpenedAt { get; set; }
+    public string OpenedBy { get; set; } = "";
+    public DateTimeOffset? CompletedAt { get; set; }
+    public string? CompletedBy { get; set; }
+    public string? CancelReason { get; set; }
+    public string? CertificateKey { get; set; }
+    public string? CertificateSha256 { get; set; }
+    public List<OffboardingTask> Tasks { get; set; } = [];
+}
+
+public class OffboardingTask
+{
+    public Guid Id { get; set; }
+    public Guid CaseId { get; set; }
+    public string Title { get; set; } = "";
+    public bool Done { get; set; }
+    public DateTimeOffset? DoneAt { get; set; }
+    public string? DoneBy { get; set; }
+}

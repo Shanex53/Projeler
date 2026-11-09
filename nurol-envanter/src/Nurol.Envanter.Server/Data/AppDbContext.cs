@@ -41,6 +41,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<PrinterSupplyState> PrinterSupplyStates => Set<PrinterSupplyState>();
     public DbSet<PrinterCounter> PrinterCounters => Set<PrinterCounter>();
     public DbSet<PrinterEvent> PrinterEvents => Set<PrinterEvent>();
+    public DbSet<PhoneLine> PhoneLines => Set<PhoneLine>();
+    public DbSet<PhoneLineEvent> PhoneLineEvents => Set<PhoneLineEvent>();
+    public DbSet<OffboardingCase> OffboardingCases => Set<OffboardingCase>();
+    public DbSet<OffboardingTask> OffboardingTasks => Set<OffboardingTask>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -234,6 +238,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         {
             e.HasIndex(x => new { x.PrinterId, x.At });
             e.HasOne<Printer>().WithMany().HasForeignKey(x => x.PrinterId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<PhoneLine>(e =>
+        {
+            e.HasIndex(x => x.Number).IsUnique();
+            e.HasIndex(x => x.Iccid).IsUnique().HasFilter("iccid IS NOT NULL");
+            e.HasIndex(x => x.ItemId);
+            e.HasIndex(x => x.EmployeeId);
+            e.Property(x => x.MonthlyFee).HasPrecision(12, 2);
+            e.Property(x => x.Version).IsRowVersion();
+            e.HasOne(x => x.Company).WithMany().OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Item).WithMany().OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.Employee).WithMany().OnDelete(DeleteBehavior.Restrict);
+        });
+        b.Entity<PhoneLineEvent>(e =>
+        {
+            e.HasIndex(x => new { x.LineId, x.At });
+            e.HasOne<PhoneLine>().WithMany().HasForeignKey(x => x.LineId).OnDelete(DeleteBehavior.Cascade);
+        });
+        b.Entity<OffboardingCase>(e =>
+        {
+            e.HasIndex(x => x.No).IsUnique();
+            // Personel başına tek açık süreç.
+            e.HasIndex(x => x.EmployeeId, "ux_offboarding_cases_open_employee").IsUnique().HasFilter("status = 0").HasDatabaseName("ux_offboarding_cases_open_employee");
+            e.HasIndex(x => x.EmployeeId, "ix_offboarding_cases_employee_id").HasDatabaseName("ix_offboarding_cases_employee_id");
+            e.HasOne(x => x.Employee).WithMany().OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.Tasks).WithOne().HasForeignKey(t => t.CaseId).OnDelete(DeleteBehavior.Cascade);
         });
         b.Entity<OutboxMail>(e =>
         {

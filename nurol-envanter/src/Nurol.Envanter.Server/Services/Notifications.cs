@@ -46,6 +46,17 @@ public class Notifier(AppDbContext db, SmtpOptions o)
                       select new Recipient(u.Id, u.Email!, u.DisplayName)).ToListAsync();
     }
 
+    /// <summary>Şirkette (şirket geneli ya da şirketin bir deposunda) yazma yetkisi olan kullanıcılar.</summary>
+    async Task<List<Recipient>> CompanyRecipients(Guid companyId)
+    {
+        var writeRoles = new[] { Roles.CompanyAdmin, Roles.WarehouseManager };
+        return await (from u in db.Users
+                      where u.IsActive && u.NotifyByEmail && u.Email != null && u.Email != ""
+                      where db.UserRoles.Any(ur => ur.UserId == u.Id && db.Roles.Any(r => r.Id == ur.RoleId && writeRoles.Contains(r.Name!)))
+                      where db.UserScopes.Any(s => s.UserId == u.Id && (s.CompanyId == companyId || db.Warehouses.Any(w => w.Id == s.WarehouseId && w.CompanyId == companyId)))
+                      select new Recipient(u.Id, u.Email!, u.DisplayName)).ToListAsync();
+    }
+
     async Task<List<Recipient>> Admins() =>
         await (from u in db.Users
                where u.IsActive && u.NotifyByEmail && u.Email != null && u.Email != ""
@@ -95,9 +106,22 @@ public class Notifier(AppDbContext db, SmtpOptions o)
                 Mail.Html($"Merhaba {r.Name},", [
                     "Son Active Directory eşitlemesinde aşağıdaki personel pasife alındı ve üzerinde açık zimmet var:",
                     Mail.List(people.Select(p => $"{p.Name} · {p.OpenItems} cihaz")),
-                    "İade sürecini başlatın."
-                ], ("Ayrılan personel raporu", Link("raporlar?r=ayrilan"))),
+                    "Üzerinde cihaz veya hat kalanlar için ilişik kesme süreci açıldı."
+                ], ("İlişik kesme süreçleri", Link("ilisik-kesme"))),
                 $"ad-offboard:{run.Id}:{r.UserId}");
+    }
+
+    public async Task OffboardingOpenedAsync(OffboardingCase c, Employee emp, int items, int lines)
+    {
+        var recipients = (await CompanyRecipients(c.CompanyId)).Concat(await Admins()).DistinctBy(r => r.UserId);
+        var holding = string.Join(" ve ", new[] { items > 0 ? $"{items} cihaz" : null, lines > 0 ? $"{lines} hat" : null }.Where(x => x != null));
+        foreach (var r in recipients)
+            Add("İlişik kesme", r, $"{c.No}: {emp.FullName} için ilişik kesme süreci açıldı",
+                Mail.Html($"Merhaba {r.Name},", [
+                    $"<b>{Mail.E(emp.FullName)}</b>{(string.IsNullOrEmpty(emp.Department) ? "" : $" ({Mail.E(emp.Department)})")} için ilişik kesme süreci açıldı. Kaynak: {Mail.E(c.Source)}.",
+                    holding.Length > 0 ? $"Personelin üzerinde {holding} var. Hepsi iade alınmadan ilişik kesme belgesi üretilmez." : "Kontrol listesindeki görevleri tamamlayın."
+                ], ("Süreci aç", Link($"ilisik-kesme/{c.Id}"))),
+                $"offboarding-open:{c.Id}:{r.UserId}");
     }
 
     /// <summary>
@@ -132,8 +156,18 @@ public class Notifier(AppDbContext db, SmtpOptions o)
             var low = stock.SelectMany(s => whs.Where(w => w.CompanyId == s.CompanyId)
                     .Select(w => (s, w.Name, Q: bal.FirstOrDefault(b => b.StockItemId == s.Id && b.WarehouseId == w.Id)?.Quantity ?? 0)))
                 .Where(x => x.Q < x.s.MinLevel).Take(10).ToList();
-            var leavers = await a.Items(db).Where(i => i.EmployeeId != null && !i.Employee!.IsActive)
-                .GroupBy(i => i.Employee!.FullName).Select(g => new { Name = g.Key, N = g.Count() }).Take(10).ToListAsync(ct);
+            var leavers = a.CanWrite
+                ? await db.OffboardingCases.Where(c => c.Status == OffboardingStatus.Open && (a.IsSystemAdmin || a.Companies.Contains(c.CompanyId)))
+                    .OrderBy(c => c.OpenedAt).Select(c => new { c.No, c.Employee!.FullName, c.OpenedAt,
+                        N = db.Items.Count(i => i.EmployeeId == c.EmployeeId), L = db.PhoneLines.Count(l => l.EmployeeId == c.EmployeeId && l.Status != LineStatus.Cancelled) })
+                    .Take(10).ToListAsync(ct)
+                : [];
+            var today = DateOnly.FromDateTime(TimeZones.ToLocal(DateTimeOffset.UtcNow));
+            var contracts = a.CanWrite
+                ? await db.PhoneLines.Where(l => l.Status != LineStatus.Cancelled && l.ContractEnd != null && l.ContractEnd <= today.AddDays(30)
+                        && (a.IsSystemAdmin || a.Companies.Contains(l.CompanyId)))
+                    .OrderBy(l => l.ContractEnd).Select(l => new { l.Number, l.Operator, l.ContractEnd }).Take(10).ToListAsync(ct)
+                : [];
 
             var printerLow = await (a.IsSystemAdmin ? db.Printers : db.Printers.Where(p => a.Warehouses.Contains(p.WarehouseId)))
                 .Where(p => p.IsActive).Join(db.PrinterSupplyStates.Where(s => s.LowSince != null), p => p.Id, s => s.PrinterId, (p, s) => new { p.Name, p.Supplies, s.SupplyKey })
@@ -144,7 +178,7 @@ public class Notifier(AppDbContext db, SmtpOptions o)
                 var pct = sup is null ? null : PrinterMonitor.Percent(sup.Max, sup.Level);
                 return $"{x.Name} · {sup?.Description ?? x.SupplyKey}{(pct is null ? "" : $" %{pct}")}";
             }).Take(15).ToList();
-            if (missing.Count == 0 && waiting.Count == 0 && low.Count == 0 && leavers.Count == 0 && printerLines.Count == 0) continue;
+            if (missing.Count == 0 && waiting.Count == 0 && low.Count == 0 && leavers.Count == 0 && printerLines.Count == 0 && contracts.Count == 0) continue;
             var blocks = new List<string>();
             if (waiting.Count > 0)
                 blocks.Add($"<h3 style=\"margin:18px 0 6px\">Teslim almanızı bekleyen transfer ({waiting.Count})</h3>" +
@@ -158,8 +192,11 @@ public class Notifier(AppDbContext db, SmtpOptions o)
             if (printerLines.Count > 0)
                 blocks.Add($"<h3 style=\"margin:18px 0 6px\">Toneri azalan yazıcılar ({printerLines.Count})</h3>" + Mail.List(printerLines));
             if (leavers.Count > 0)
-                blocks.Add($"<h3 style=\"margin:18px 0 6px\">Açık zimmeti kalan pasif personel ({leavers.Count})</h3>" +
-                           Mail.List(leavers.Select(l => $"{l.Name} · {l.N} cihaz")));
+                blocks.Add($"<h3 style=\"margin:18px 0 6px\">Açık ilişik kesme süreçleri ({leavers.Count})</h3>" +
+                           Mail.List(leavers.Select(l => $"{l.No} · {l.FullName} · {l.N} cihaz, {l.L} hat kaldı · {TimeZones.Format(l.OpenedAt)[..10]} tarihinden beri")));
+            if (contracts.Count > 0)
+                blocks.Add($"<h3 style=\"margin:18px 0 6px\">Sözleşmesi 30 gün içinde biten hatlar ({contracts.Count})</h3>" +
+                           Mail.List(contracts.Select(l => $"{LineLabels.Number(l.Number)} · {l.Operator} · {l.ContractEnd:dd.MM.yyyy}")));
 
             Add("Günlük özet", new Recipient(u.Id, u.Email!, u.DisplayName), $"Nurol Envanter günlük özet · {day:dd.MM.yyyy}",
                 Mail.Html($"Merhaba {u.DisplayName},", ["Kapsamınızdaki depolarda ilgilenmeniz gereken kayıtlar:", .. blocks], ("Uygulamayı aç", Link(""))), key);

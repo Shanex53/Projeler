@@ -111,6 +111,41 @@ public class DirectoryTests(TestApp app)
     }
 
     [Fact]
+    public async Task Sync_opens_offboarding_for_disabled_people_holding_devices_or_lines()
+    {
+        var (f, dir, domain, co) = Setup();
+        await using var _ = f;
+        var admin = await Admin(f, co);
+        var people = Enumerable.Range(1, 5).Select(i => P($"ayr{i}", $"Ayrılan {i}", co)).ToList();
+        foreach (var p in people) dir.Add(p);
+        await Sync(admin);
+        var withLine = Emp(domain, people[0].Id)!;
+        var nothing = Emp(domain, people[1].Id)!;
+        var nrl = app.Db(db => db.Companies.First(x => x.Code == "NRL").Id);
+        var number = "05" + RandomNumberGenerator.GetInt32(30, 60) + RandomNumberGenerator.GetInt32(1000000, 9999999);
+        var line = await (await admin.PostJson("/api/lines", new PhoneLineSave(nrl, number, "Vodafone", "Yalnız data", null, null, null, LineStatus.Active, null, null, null, null))).Read<PhoneLineDetail>();
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostJson($"/api/lines/{line.Line.Id}/assign", new LineAssign(withLine.Id, null))).StatusCode);
+
+        dir.Add(people[0] with { Disabled = true });
+        dir.Add(people[1] with { Disabled = true });
+        // Önizleme süreç açmaz.
+        await Sync(admin, preview: true);
+        Assert.False(app.Db(db => db.OffboardingCases.Any(c => c.EmployeeId == withLine.Id)));
+
+        var run = await Sync(admin);
+        Assert.Equal(2, run.Deactivated);
+        var opened = app.Db(db => db.OffboardingCases.Single(c => c.EmployeeId == withLine.Id));
+        Assert.Equal(OffboardingStatus.Open, opened.Status);
+        Assert.Equal("AD eşitlemesi", opened.Source);
+        Assert.False(app.Db(db => db.OffboardingCases.Any(c => c.EmployeeId == nothing.Id)));
+        Assert.Contains(run.Changes, c => c.Kind == "İlişik kesme" && c.Name == withLine.FullName);
+
+        // Sonraki eşitleme aynı kişi için yeni süreç açmaz.
+        await Sync(admin);
+        Assert.Equal(1, app.Db(db => db.OffboardingCases.Count(c => c.EmployeeId == withLine.Id)));
+    }
+
+    [Fact]
     public async Task Failed_or_suspicious_sync_does_not_mass_deactivate()
     {
         var (f, dir, domain, co) = Setup();
