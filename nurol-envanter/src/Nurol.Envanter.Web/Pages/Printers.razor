@@ -1,0 +1,156 @@
+@page "/yazicilar"
+@implements IDisposable
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>Yazıcılar · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Yazıcılar</h1><p>Ağ yazıcılarının toner seviyeleri ve sayaçları SNMP ile okunur. Toner azalınca hangi tonerin kullanılacağı ve stok durumu gösterilir.</p></div>
+    @if (Session.CanWrite) { <button class="btn pri" @onclick="() => adding = true">+ Yazıcı ekle</button> }
+</div>
+
+<div class="row">
+    <div class="seg" role="tablist">
+        <button role="tab" aria-selected="@(tab == "list")" class="@(tab == "list" ? "on" : "")" @onclick='() => tab = "list"'>Yazıcılar</button>
+        <button role="tab" aria-selected="@(tab == "needs")" class="@(tab == "needs" ? "on" : "")" @onclick="OpenNeeds">Toner ihtiyacı</button>
+    </div>
+    @if (tab == "list")
+    {
+        <select class="sel-in" aria-label="Depo" value="@warehouseId" @onchange="e => { warehouseId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; return Load(); }">
+            <option value="">Tüm depolar</option>
+            @foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }
+        </select>
+        <span class="muted" style="font-size:12.5px">Görünüm her dakika yenilenir; yazıcılar sunucuda birkaç dakikada bir okunur.</span>
+    }
+</div>
+<ErrorNote Error="error" />
+
+@if (tab == "list")
+{
+    @if (rows is null) { <div class="loading">Yükleniyor…</div> }
+    else if (rows.Count == 0)
+    {
+        <div class="note">Henüz yazıcı eklenmedi. “Yazıcı ekle” ile IP adresini girin; bağlantıyı test edip toner ve sayaç bilgisini görebilirsiniz.</div>
+    }
+    else
+    {
+        var warnings = rows.SelectMany(r => r.Warnings).OrderBy(w => w.Severity == "Kritik" ? 0 : 1).ThenBy(w => w.Percent ?? 0).ToList();
+        @if (warnings.Count > 0)
+        {
+            <section class="card">
+                <div class="ch"><h2>Toner uyarıları</h2><span class="pill p-crit">@warnings.Count(w => w.Severity == "Kritik") kritik</span><span class="pill p-warn">@warnings.Count(w => w.Severity != "Kritik") uyarı</span></div>
+                <div class="cb" style="padding-block:4px">
+                    <ul class="warn-list">
+                        @foreach (var w in warnings)
+                        {
+                            <li>
+                                <span class="dot @(w.Severity == "Kritik" ? "crit" : "")"></span>
+                                <div><b><a href="yazicilar/@w.PrinterId">@w.PrinterName</a></b> @if (w.Location is not null) { <span class="muted">· @w.Location</span> }<span style="display:block;font-size:13px">@w.Message</span></div>
+                                @if (w.StockItemId is null) { <a class="btn sm" href="yazicilar/@w.PrinterId">Toner seç</a> }
+                                else if (w.StockInWarehouse > 0) { <span class="pill p-ok">Stokta var</span> }
+                                else { <span class="pill p-crit">Stokta yok</span> }
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </section>
+        }
+        <div class="printers">
+            @foreach (var p in rows)
+            {
+                <a class="card printer" href="yazicilar/@p.Id" style="@(p.IsActive ? "" : "opacity:.6")">
+                    <div class="top-line">
+                        <div><h2>@p.Name</h2><span class="muted" style="font-size:12.5px">@(p.Location ?? p.WarehouseName) · <span class="mono">@p.Host</span></span></div>
+                        @if (!p.IsActive) { <span class="pill p-mute">İzleme kapalı</span> }
+                        else if (p.Online == true) { <span class="pill p-ok">Çevrimiçi</span> }
+                        else if (p.Online == false) { <span class="pill p-crit" title="@p.LastError">Ulaşılamıyor</span> }
+                        else { <span class="pill p-mute">Okunmadı</span> }
+                    </div>
+                    <div class="stat-line"><span>@(p.Model ?? "Model bilinmiyor")</span>@if (p.PageCount is long c) { <span>Sayaç <b>@c.ToString("N0", Fmt.Tr)</b></span> }</div>
+                    <div class="supplies">
+                        @foreach (var s in p.Supplies.Where(s => s.Monitored)) { <SupplyBar S="s" /> }
+                        @if (p.Supplies.Count == 0) { <span class="muted" style="font-size:12.5px">@(p.Online == false ? "Bilgi alınamadı." : "Sarf bilgisi yok.")</span> }
+                    </div>
+                    <span class="muted" style="font-size:11.5px">Son okuma: @Fmt.DateTime(p.LastSuccessAt)</span>
+                </a>
+            }
+        </div>
+    }
+}
+else
+{
+    <section class="card">
+        <div class="ch"><h2>Toner ihtiyacı</h2></div>
+        <div class="tw">
+            <table>
+                <thead><tr><th>Toner</th><th class="right">Kullanan yazıcı</th><th class="right">Azalan / biten</th><th class="right">Toplam stok</th><th>Depolar</th><th>Durum</th></tr></thead>
+                <tbody>
+                    @if (needs is null) { <tr><td colspan="6" class="empty">Yükleniyor…</td></tr> }
+                    else if (needs.Count == 0) { <tr><td colspan="6" class="empty">Henüz hiçbir yazıcı yuvasına toner bağlanmadı. Yazıcı sayfasından her yuvanın tonerini seçin.</td></tr> }
+                    else
+                    {
+                        @foreach (var n in needs)
+                        {
+                            <tr>
+                                <td><b>@n.Name</b><span class="sub mono">@n.Code</span></td>
+                                <td class="num right" title="@string.Join(", ", n.Printers)">@n.PrinterCount</td>
+                                <td class="num right">@if (n.LowCount > 0) { <b style="color:var(--warn)">@n.LowCount</b> } else { <span class="muted">0</span> }</td>
+                                <td class="num right"><b>@Fmt.Qty(n.StockTotal)</b> @n.Unit</td>
+                                <td style="font-size:12.5px">@string.Join(" · ", n.Balances.Where(b => b.Quantity > 0).Select(b => $"{b.WarehouseName}: {Fmt.Qty(b.Quantity)}"))</td>
+                                <td><span class="pill @(n.Status == "Yeterli" ? "p-ok" : n.Status.StartsWith("Stok yok") || n.Status == "Stok yetersiz" ? "p-crit" : "p-warn")">@n.Status</span></td>
+                            </tr>
+                        }
+                    }
+                </tbody>
+            </table>
+        </div>
+        <div class="toolbar foot">Toner girişi ve çıkışı <a href="stok">Stok</a> sayfasından yapılır. Yazıcıda değişim yapıldığında yazıcı sayfasındaki “Değiştirildi” ile stoktan düşebilirsiniz.</div>
+    </section>
+}
+
+@if (adding)
+{
+    <PrinterEditor Warehouses="warehouses" OnClose="() => adding = false" OnSaved="Saved" />
+}
+
+@code {
+    string tab = "list";
+    List<PrinterListRow>? rows;
+    List<TonerNeedRow>? needs;
+    List<WarehouseDto> warehouses = [];
+    Guid? warehouseId;
+    bool adding;
+    ApiException? error;
+    Timer? timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        warehouses = await Api.Get<List<WarehouseDto>>("api/warehouses");
+        await Load();
+        timer = new Timer(async _ => { try { await InvokeAsync(async () => { if (tab == "list" && !adding) { await Load(); StateHasChanged(); } }); } catch (ObjectDisposedException) { } }, null, 60_000, 60_000);
+    }
+
+    async Task Load()
+    {
+        try { rows = await Api.Get<List<PrinterListRow>>("api/printers" + (warehouseId is null ? "" : $"?warehouseId={warehouseId}")); error = null; }
+        catch (ApiException ex) { error = ex; rows ??= []; }
+    }
+
+    async Task OpenNeeds()
+    {
+        tab = "needs";
+        try { needs = await Api.Get<List<TonerNeedRow>>("api/printers/toner-needs"); }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    void Saved(PrinterDetail d)
+    {
+        adding = false;
+        Toasts.Show($"{d.Printer.Name} eklendi");
+        Nav.NavigateTo($"yazicilar/{d.Printer.Id}");
+    }
+
+    public void Dispose() => timer?.Dispose();
+}

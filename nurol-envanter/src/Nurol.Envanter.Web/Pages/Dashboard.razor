@@ -71,6 +71,23 @@ else
         </section>
     </div>
 
+    @if (d.PrinterWarnings is { Count: > 0 } pw)
+    {
+        <section class="card">
+            <div class="ch"><h2>Yazıcı uyarıları</h2><a class="btn sm" href="yazicilar">Yazıcılar</a></div>
+            <div class="cb" style="padding-block:4px">
+                <ul class="warn-list">
+                    @foreach (var w in pw)
+                    {
+                        <li><span class="dot @(w.Severity == "Kritik" ? "crit" : "")"></span>
+                            <div><b><a href="yazicilar/@w.PrinterId">@w.PrinterName</a></b> @if (w.Location is not null) { <span class="muted">· @w.Location</span> }<span style="display:block;font-size:13px">@w.Message</span></div>
+                            <span class="pill @(w.Severity == "Kritik" ? "p-crit" : "p-warn")">@w.Severity</span></li>
+                    }
+                </ul>
+            </div>
+        </section>
+    }
+
     <section class="card">
         <div class="ch"><h2>Son hareketler</h2></div>
         <div class="tw">

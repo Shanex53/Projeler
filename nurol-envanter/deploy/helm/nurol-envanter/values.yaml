@@ -89,6 +89,17 @@ smtp:
     requests: { cpu: 50m, memory: 192Mi }
     limits: { memory: 512Mi }
 
+# Yazıcı izleme (SNMP v1/v2c, UDP 161). Pod'ların yazıcı ağlarına UDP 161 ile erişebilmesi gerekir
+# (güvenlik duvarı / NetworkPolicy egress). Uygulama yalnızca allowedNetworks içindeki adreslere bağlanır.
+printers:
+  enabled: true
+  pollMinutes: 5
+  timeoutSeconds: 4
+  allowedNetworks:
+    - 10.0.0.0/8
+    - 172.16.0.0/12
+    - 192.168.0.0/16
+
 # Kurum CA sertifikası (PostgreSQL, S3 ve LDAPS TLS doğrulaması için). Var olan bir ConfigMap'teki
 # PEM dosyası /etc/ssl/certs/kurum-ca.crt olarak bağlanır; SSL_CERT_FILE ve LDAPTLS_CACERT ile kullanılır.
 corporateCa:

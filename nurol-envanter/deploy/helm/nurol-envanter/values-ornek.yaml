@@ -48,3 +48,8 @@ smtp:
   digest:
     enabled: true
     cron: "30 7 * * 1-5"
+
+printers:
+  pollMinutes: 5
+  allowedNetworks:
+    - 10.20.0.0/16   # yazıcı VLAN'ı

@@ -29,6 +29,12 @@ Bu klasör sıfırdan başlatılan yeni projedir; depodaki diğer dosyalarla ba�
 - QR etiket basımı (A4 etiket kâğıtları) ve kod okutma (el tipi okuyucu, kamera, elle giriş; etiket, seri no veya IMEI)
 - E-posta bildirimleri: transfer yolda, günlük özet, AD'den ayrılan personel; kullanıcı bazında aç/kapa
 
+## Yazıcı izleme
+
+- Ağ yazıcıları IP adresiyle eklenir (envanterden bağımsız); SNMP ile toner seviyeleri ve sayfa sayacı canlı okunur
+- Her toner yuvasına stoktaki tonerin bağlanması; azalan/biten tonerde “şu toneri kullanın, şu depoda bu kadar var” uyarısı ve e-posta
+- Toner değişimi algılama ve tek tıkla stoktan düşme, toner ihtiyacı tablosu, günlük baskı ve yazıcı sayaçları raporu
+
 Ayrıntılar: [tasarım](docs/tasarim.md), [Aşama 1 planı](docs/plan-asama-1.md), [Aşama 2 notları](docs/asama-2.md), [Aşama 3 notları](docs/asama-3.md).
 
 ## Hızlı başlangıç
@@ -68,7 +74,7 @@ NE_URL=http://localhost:8080 node tests/e2e/akis.cjs                       # com
 ## Kullanılan açık kaynak bileşenler
 
 ASP.NET Core, Entity Framework Core, Npgsql (PostgreSQL), System.DirectoryServices.Protocols (LDAP), PDFsharp-MigraDoc 6.2.4 (MIT), AWS SDK for .NET (S3),
-ClosedXML (Excel, MIT), QRCoder (QR, MIT), MailKit (SMTP, MIT),
+ClosedXML (Excel, MIT), QRCoder (QR, MIT), MailKit (SMTP, MIT), Lextm.SharpSnmpLib (SNMP, MIT),
 DejaVu Sans yazı tipi (PDF'te Türkçe karakterler için; lisansı `src/Nurol.Envanter.Server/Fonts/LICENSE-DejaVu.txt`).
 
 PDFsharp-MigraDoc 6.5 ve sonrası AGPL-3.0 lisanslıdır; bu nedenle MIT lisanslı 6.2.4 sürümüne sabitlenmiştir.

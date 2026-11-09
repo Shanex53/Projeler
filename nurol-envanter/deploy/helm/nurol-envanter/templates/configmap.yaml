@@ -54,6 +54,12 @@ data:
   Smtp__MissingDocDays: {{ .missingDocDays | quote }}
   {{- end }}
   Smtp__BaseUrl: {{ .Values.smtp.baseUrl | default (ternary (printf "http%s://%s" (ternary "s" "" .Values.ingress.tls.enabled) .Values.ingress.host) "" .Values.ingress.enabled) | quote }}
+  Printers__Enabled: {{ .Values.printers.enabled | quote }}
+  Printers__PollMinutes: {{ .Values.printers.pollMinutes | quote }}
+  Printers__TimeoutSeconds: {{ .Values.printers.timeoutSeconds | quote }}
+  {{- range $i, $n := .Values.printers.allowedNetworks }}
+  Printers__AllowedNetworks__{{ $i }}: {{ $n | quote }}
+  {{- end }}
   {{- range $k, $v := .Values.config.extraEnv }}
   {{ $k }}: {{ $v | quote }}
   {{- end }}

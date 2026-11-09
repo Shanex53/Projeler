@@ -1,0 +1,19 @@
+@* Sarf seviyesi: renk yuvası kendi rengiyle, diğerleri gri. *@
+<div class="supply @S.State @(ShowName ? "" : "bare")" title="@($"{S.Description} · {S.Type}")">
+    @if (ShowName) { <span class="name">@S.Description @if (S.PendingReplacement) { <span class="tag info">değişti</span> }</span> }
+    <div class="level" role="img" aria-label="@($"{S.Description}: {S.Level}")"><i style="width:@Width;--c:@Color"></i></div>
+    <span class="pct">@S.Level</span>
+</div>
+@code {
+    [Parameter, EditorRequired] public PrinterSupplyDto S { get; set; } = default!;
+    [Parameter] public bool ShowName { get; set; } = true;
+    string Width => S.Percent is int p ? $"{Math.Max(p, 2)}%" : S.Level == "Var" ? "100%" : "0%";
+    string Color => S.State == "empty" ? "var(--crit)" : (S.Color ?? "").ToLowerInvariant() switch
+    {
+        "black" or "siyah" => "#1c2430",
+        "cyan" or "camgöbeği" => "#00a3d9",
+        "magenta" or "eflatun" => "#d1007a",
+        "yellow" or "sarı" => "#f0c419",
+        _ => S.Level == "Var" ? "var(--line)" : "#7d8a9c"
+    };
+}

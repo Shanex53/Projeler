@@ -1,0 +1,102 @@
+@inject Api Api
+<Modal Title="@(Existing is null ? "Yazıcı ekle" : "Yazıcıyı düzenle")" OnClose="OnClose" Wide="true">
+    <ChildContent>
+        <form class="form two" id="pf" @onsubmit="Save">
+            <label class="fld @(error?.For("host") is not null ? "err" : "")" for="pf-host">IP adresi veya ana bilgisayar adı
+                <input id="pf-host" @bind="host" placeholder="10.20.4.50" class="mono" />
+                @if (error?.For("host") is { } eh) { <span class="err-msg">@eh</span> }
+            </label>
+            <label class="fld" for="pf-name">Ad<input id="pf-name" @bind="name" placeholder="Ör. Kat 3 renkli yazıcı" /></label>
+            <label class="fld" for="pf-comm">SNMP topluluk adı (community)
+                <input id="pf-comm" type="password" @bind="community" autocomplete="off" placeholder="@(Existing?.HasCommunity == true ? "Değiştirmek için yazın" : "public")" />
+                <span class="help">Salt okunur topluluk yeterlidir. Kaydedildikten sonra gösterilmez.</span>
+            </label>
+            <div class="row" style="gap:12px">
+                <label class="fld" for="pf-ver" style="flex:1">SNMP sürümü
+                    <select id="pf-ver" @bind="version"><option value="v2c">v2c</option><option value="v1">v1</option></select>
+                </label>
+                <label class="fld" for="pf-port" style="width:110px">Port<input id="pf-port" type="number" @bind="port" /></label>
+            </div>
+            <label class="fld" for="pf-wh">Depo (kapsam ve tonerin düşüleceği yer)
+                <select id="pf-wh" value="@warehouseId" @onchange="e => warehouseId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                    <option value="">Seçin</option>
+                    @foreach (var w in Warehouses) { <option value="@w.Id">@w.Name · @w.CompanyName</option> }
+                </select>
+            </label>
+            <label class="fld" for="pf-loc">Konum<input id="pf-loc" @bind="location" placeholder="Ör. Genel Müdürlük, 3. kat koridor" /></label>
+            <label class="fld" for="pf-th">Uyarı eşiği (%)<input id="pf-th" type="number" min="1" max="90" @bind="threshold" /><span class="help">Toner bu yüzdenin altına düşünce uyarı verilir.</span></label>
+            @if (Existing is not null) { <label class="check" style="align-self:end"><input type="checkbox" @bind="active" /> İzleme açık</label> }
+            <div class="full stack">
+                <div class="row"><button type="button" class="btn" disabled="@busy" @onclick="Probe">@(busy ? "Bağlanılıyor…" : "Bağlantıyı test et")</button>
+                    <span class="muted" style="font-size:12.5px">Kaydetmeden önce yazıcıdan model, sayaç ve toner bilgisini okur.</span></div>
+                @if (probe is not null)
+                {
+                    <div class="note @(probe.Ok ? "" : "error")">
+                        <b>@probe.Message</b>
+                        @if (probe.Ok)
+                        {
+                            <div style="margin-top:6px">@probe.Model @(probe.SerialNumber is null ? "" : $"· SN {probe.SerialNumber}") @(probe.PageCount is null ? "" : $"· sayaç {probe.PageCount.Value.ToString("N0", Fmt.Tr)}")</div>
+                            <div class="supplies" style="margin-top:8px">@foreach (var s in probe.Supplies) { <SupplyBar S="s" /> }</div>
+                        }
+                    </div>
+                }
+                <ErrorNote Error="@(error?.For("host") is null ? error : null)" />
+            </div>
+        </form>
+    </ChildContent>
+    <Footer>
+        <button class="btn" @onclick="OnClose">Vazgeç</button>
+        <button class="btn pri" type="submit" form="pf" disabled="@busy">Kaydet</button>
+    </Footer>
+</Modal>
+
+@code {
+    [Parameter] public PrinterDetail? Existing { get; set; }
+    [Parameter] public List<WarehouseDto> Warehouses { get; set; } = [];
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<PrinterDetail> OnSaved { get; set; }
+    string? host, name, community, location;
+    string version = "v2c";
+    int port = 161, threshold = 15;
+    bool active = true, busy;
+    Guid? warehouseId;
+    PrinterProbeResult? probe;
+    ApiException? error;
+
+    protected override void OnInitialized()
+    {
+        if (Existing is { } e)
+        {
+            host = e.Printer.Host; name = e.Printer.Name; location = e.Printer.Location; version = e.SnmpVersion; port = e.Port;
+            threshold = e.LowThreshold; active = e.Printer.IsActive; warehouseId = e.Printer.WarehouseId;
+        }
+        else if (Warehouses.Count == 1) warehouseId = Warehouses[0].Id;
+    }
+
+    async Task Probe()
+    {
+        busy = true; error = null; probe = null;
+        try
+        {
+            probe = await Api.Post<PrinterProbeResult>("api/printers/probe", new PrinterProbeRequest(host ?? "", port, version, community, Existing?.Printer.Id));
+            if (probe.Ok && string.IsNullOrWhiteSpace(name)) name = probe.SysName ?? probe.Model;
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Save()
+    {
+        error = null;
+        if (warehouseId is null) { error = new ApiException("Depo seçin."); return; }
+        busy = true;
+        try
+        {
+            var body = new PrinterSave(warehouseId.Value, name ?? "", host ?? "", port, version, community, location, threshold, active);
+            var d = Existing is null ? await Api.Post<PrinterDetail>("api/printers", body) : await Api.Put<PrinterDetail>($"api/printers/{Existing.Printer.Id}", body);
+            await OnSaved.InvokeAsync(d);
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

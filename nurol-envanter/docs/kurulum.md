@@ -15,6 +15,7 @@ Kubernetes Secret ve Helm values dosyasıyla verilir.
 | AD eşitleme CronJob'u | Aynı imaj `ad-sync` argümanıyla çalışır (isteğe bağlı). |
 | Günlük özet CronJob'u | Aynı imaj `bildirim-ozet` argümanıyla çalışır (isteğe bağlı). |
 | SMTP | E-posta bildirimleri için kurum SMTP sunucusu (isteğe bağlı). |
+| Ağ yazıcıları | SNMP v1/v2c (UDP 161) ile okunur; pod'ların yazıcı ağlarına erişimi gerekir. |
 | Active Directory | LDAPS ile salt okunur servis hesabı. Personel eşitlemesi ve AD ile giriş ayrı ayrı açılır. |
 
 Redis veya başka bir ara katman gerekmez. Oturumlar, cookie şifreleme anahtarları ve giriş kilitleri PostgreSQL'de
@@ -233,7 +234,31 @@ Girişte kullanıcı adı `ad.soyad`, `NUROL\ad.soyad` veya `ad.soyad@nurol.loca
 - **Kod okutma:** **Kod okut** sayfası ve üst arama kutusu etiket, seri no veya benzersiz özel alan (ör. IMEI) ile cihazı bulur. USB/Bluetooth el tipi okuyucular klavye gibi çalışır. Kamerayla okuma, tarayıcının yerleşik barkod okuyucusunu destekleyen tarayıcılarda (Android'de Chrome/Edge) çalışır; kamera için sayfa HTTPS üzerinden açılmalıdır.
 - **Excel ile toplu ekleme:** kategoriye özel şablon (açılır model, depo ve seçenek listeleriyle) indirilir, doldurulup yüklenir. Dosya önce satır satır kontrol edilir (model, depo yetkisi, lokasyon, seri no ve benzersiz alanların hem veritabanında hem dosya içinde tekrarı, alan kuralları). Hata varsa hiçbir satır kaydedilmez. Hatasızsa önizleme gösterilir ve onayla tüm satırlar tek işlemde eklenir. Personel için de aynı akış vardır (AD kullanılmayan personel için).
 
-## 9. Yedekleme ve geri yükleme
+## 9. Yazıcı izleme
+
+Yazıcılar envanterden bağımsızdır; **Yazıcılar → Yazıcı ekle** ile IP adresi (veya DNS adı), SNMP topluluk adı ve bağlı olduğu depo girilir. **Bağlantıyı test et** kaydetmeden önce model, sayaç ve toner bilgisini okur.
+
+**Okunanlar (standart Printer-MIB, RFC 3805):** model, seri no, ağ adı, toplam sayfa sayacı ve her sarf yuvası (toner, mürekkep, drum, atık toner) için açıklama, renk ve seviye. Yazıcı yüzde yerine yalnızca “var” bildiriyorsa (bazı modeller) seviye “Var” olarak gösterilir.
+
+**Toner eşleme ve uyarılar:**
+
+- Her yuva için **kullanılacak toner** stok malzemelerinden seçilir (önce Stok sayfasında toner malzemesi tanımlanmalıdır). “Aynı modeldeki diğer yazıcılara da uygula” ile aynı modeldeki tüm yazıcılara tek seferde atanır.
+- Seviye uyarı eşiğinin (varsayılan %15) altına inince ya da biterse yazıcı sayfasında, Yazıcılar listesinde ve Genel Bakış'ta uyarı görünür. Örnek: “Black Cartridge %8. Kullanılacak toner: HP 151A (SRF-TNR-014) — Ankara Merkez Depo: 4 adet.” Toner seçilmemişse bunu belirtir. Yazıcının deposunda stok yoksa diğer depolardaki toplamı gösterir.
+- Uyarı başına bir kez, yazıcının deposundaki depo sorumlularına ve şirket yöneticilerine e-posta gider; seviye yükselene kadar tekrarlanmaz. Günlük özette de “toneri azalan yazıcılar” listelenir.
+- Seviye birden en az 30 puan artıp %70'in üzerine çıkarsa **toner değişimi algılanır**. Yazıcı sayfasında “Değişimi onayla” ile kayıt yapılır ve istenirse 1 adet toner yazıcının deposundan stoktan düşülür. Elle değişim için “Değiştirildi” düğmesi kullanılır.
+- **Toner ihtiyacı** sekmesi her toner için kullanan yazıcı sayısını, azalan yazıcı sayısını ve depolardaki stoku gösterir.
+
+**Sayaç:** her okumada gün sonu sayacı saklanır. Yazıcı sayfasında günlük baskı ve son 30 gün toplamı, **Raporlar → Yazıcı sayaçları**'nda tarih aralığına göre yazıcı başına basılan sayfa (Excel'e aktarılabilir) görünür. Sayaç sıfırlanmışsa o dönem boş bırakılır.
+
+**Okuma sıklığı ve çalışma şekli:** uygulama yazıcıları `printers.pollMinutes` (varsayılan 5 dk) aralıkla okur; birden fazla pod olsa da okumayı aynı anda tek pod yapar. Yazıcı sayfasındaki **Şimdi oku** anında okur. Okuma başarısız olursa yazıcı “Ulaşılamıyor” görünür ve son bilinen seviyeler korunur.
+
+**Ağ ve güvenlik:**
+
+- Pod'lardan yazıcı ağlarına **UDP 161** çıkışına izin verin (güvenlik duvarı, NetworkPolicy egress).
+- Uygulama yalnızca `printers.allowedNetworks` içindeki adreslere bağlanır (varsayılan özel ağlar 10/8, 172.16/12, 192.168/16). Kurumun yazıcı VLAN'ıyla daraltılması önerilir; liste verildiğinde yalnızca o ağlar geçerlidir.
+- Yazıcılarda salt okunur bir SNMP topluluk adı kullanın. Topluluk adı veritabanında saklanır, arayüze geri gönderilmez. SNMP v3 bu sürümde desteklenmez.
+
+## 10. Yedekleme ve geri yükleme
 
 Veritabanı ve nesne deposu **birlikte** yedeklenmelidir. Tutanak kayıtları veritabanında, dosyaları nesne deposundadır.
 
@@ -248,7 +273,7 @@ Evrak dosyaları yüklendikten sonra değiştirilmez; her sürüm ayrı bir nesn
 
 Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumun yedekleme altyapısına göre belirlenmelidir.
 
-## 10. Güvenlik notları
+## 11. Güvenlik notları
 
 - Oturum cookie'si HttpOnly, SameSite=Strict ve üretimde Secure'dür. Uygulama HTTPS arkasında (ingress TLS) çalışmalıdır.
 - Durum değiştiren tüm API isteklerinde özel bir başlık zorunludur (CSRF koruması); uygulama CORS açmaz.
@@ -257,7 +282,7 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 - Kullanıcı devre dışı bırakıldığında, rolü veya parolası değiştiğinde açık oturumları sunucudan hemen iptal edilir.
 - Yüklenen dosyaların türü uzantıdan değil içerikten belirlenir (PDF/JPEG/PNG); en fazla 20 MB.
 
-## 11. Sorun giderme
+## 12. Sorun giderme
 
 | Belirti | Olası neden |
 |---|---|
@@ -273,13 +298,17 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 | E-postalardaki bağlantı yanlış adrese gidiyor | `smtp.baseUrl` değerini uygulamanın dış adresiyle doldurun. |
 | Etiketler kâğıda kayık basılıyor | Yazdırmada ölçek %100 (gerçek boyut) değil; ya da kâğıt düzeni seçilen şablona uymuyor. |
 | Kamera ile okutma görünmüyor | Tarayıcı yerleşik barkod okuyucuyu desteklemiyor veya sayfa HTTPS değil. El tipi okuyucu veya elle giriş kullanılabilir. |
+| Yazıcı “yanıt vermedi” | Yazıcıda SNMP kapalı, topluluk adı yanlış veya pod'lardan UDP 161 engelli. Yazıcının web arayüzünden SNMP v1/v2c'yi açın. |
+| Yazıcı “izin verilen ağların dışında” | Adres `printers.allowedNetworks` listesinde değil. |
+| Toner seviyesi “Var” veya “Bilinmiyor” | Yazıcı yüzde bildirmiyor; bazı modeller (ör. toner yeniden doldurulmuşsa) yalnızca “var/yok” bildirir. |
 | AD kullanıcısı giriş yapamıyor | `loginEnabled` kapalı, uygulamada hesap açılmamış, hesap AD'de devre dışı veya AD kimliği değişmiş (hesabı yeniden açın). |
 
-## 12. Doğrulama durumu
+## 13. Doğrulama durumu
 
 **Bu teslimde test edilenler:**
 
-- 43 otomatik test. Aşama 3 için: raporların kapsama göre süzülmesi ve Excel çıktısı, değer raporu toplamı, Excel toplu eklemede hatalı dosyanın hiç kaydedilmemesi (geçersiz depo, dosya içi tekrar seri no ve IMEI, liste dışı seçenek, yetkisiz depo, tanınmayan sütun), IMEI'nin baştaki sıfırı ve sayı olarak girilmesi, personel içe aktarımında sicil kontrolü, etiket PDF'inin sayfa düzeni ve QR görselinin gerçekten gömülmesi, kod ile arama ve kapsam, transfer bildiriminin doğru alıcılara gitmesi, günlük özetin aynı gün tekrar üretilmemesi, gerçek SMTP sunucusuna (Mailpit) gönderim ve hata durumunda yeniden deneme, Hesabım ayarları.
+- 49 otomatik test. Yazıcı izleme için: gerçek UDP üzerinden yanıt veren bir SNMP ajanına karşı Printer-MIB okuması, yanlış topluluk ve izinli ağ dışı adresin reddi, azalan tonerde uyarı ve önerilen toner/stok metni, uyarı e-postasının bir kez gitmesi, aynı modele toner atama, değişim algılama ve stoktan düşme, ulaşılamayan yazıcıda son değerlerin korunması, sayaç raporu, depo kapsamı. Okuyucu ayrıca bağımsız bir SNMP simülatörüne (snmpsim) karşı denendi.
+- Aşama 3 için: raporların kapsama göre süzülmesi ve Excel çıktısı, değer raporu toplamı, Excel toplu eklemede hatalı dosyanın hiç kaydedilmemesi (geçersiz depo, dosya içi tekrar seri no ve IMEI, liste dışı seçenek, yetkisiz depo, tanınmayan sütun), IMEI'nin baştaki sıfırı ve sayı olarak girilmesi, personel içe aktarımında sicil kontrolü, etiket PDF'inin sayfa düzeni ve QR görselinin gerçekten gömülmesi, kod ile arama ve kapsam, transfer bildiriminin doğru alıcılara gitmesi, günlük özetin aynı gün tekrar üretilmemesi, gerçek SMTP sunucusuna (Mailpit) gönderim ve hata durumunda yeniden deneme, Hesabım ayarları.
 - Aşama 2 için: transfer akışı ve yetkileri (gönderme kaynak, teslim alma hedef depo yetkisi; transferdeki cihazın zimmetlenememesi; stok yetersizse gönderimin tamamen geri alınması; eşzamanlı gönderimde stokun tek kez düşmesi; şirketler arası transfer engeli), görünümlerin kişiye özel olması, AD eşitleme kuralları (yeniden adlandırmada mükerrer kayıt oluşmaması, başarısız veya şüpheli aramada toplu pasife alma yapılmaması, eşleşmeyen kişinin raporlanması) ve AD girişi (yerel parolaya düşmeme, dizine ulaşılamadığında reddetme, devre dışı hesabın oturumunun iptali, aynı kullanıcı adıyla yeni AD hesabının yetkiyi devralamaması).
 - LDAP istemcisi gerçek bir dizin sunucusuna (OpenLDAP) karşı test edildi: sayfalı arama, öznitelik eşlemesi, parola doğrulama, boş parolanın reddi, filtre enjeksiyonu. `ad-sync` komutu imaj içinde salt okunur dosya sistemiyle çalıştırıldı.
 - Ayrıca Aşama 1'deki 19 entegrasyon testi, gerçek PostgreSQL 17 üzerinde (Testcontainers). Kapsamları: rol ve depo kapsamı (liste, detay, CSV dışa aktarım, belge indirme), şirket bazlı zimmet kuralı, eşzamanlı çift zimmet engeli, tekrarlanan istek (idempotency), eşzamanlı stok çıkışlarında negatif bakiye engeli, IMEI kuralları (15 hane, baştaki sıfır, grup geneli benzersizlik), alan arşivleme ve değerlerin korunması, kural çakışma raporu, iyimser eşzamanlılık, PDF belgesinin sonradan değişmemesi, imzalı evrak sürümleme ve içerik türü denetimi, iki ayrı uygulama örneği arasında oturum paylaşımı ve hesap kapatılınca oturum iptali.
@@ -296,6 +325,7 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 - Kurumsal S3/MinIO servisiyle çalışma (adres, path-style erişim, CA).
 - Kurum SMTP sunucusu (port, TLS, kimlik doğrulama) ve e-postaların spam filtrelerinden geçmesi.
 - Etiketlerin kurumda kullanılacak etiket kâğıdı ve yazıcıyla hizası; kamerayla okutmanın sahadaki telefonlarda denenmesi.
+- Kurumdaki gerçek yazıcı modelleriyle SNMP okuması: Printer-MIB standarttır ama üreticiler sarf açıklamalarını ve seviye bildirimini farklı uygular. Her model için bir yazıcı eklenip **Bağlantıyı test et** ile seviyelerin doğru göründüğü kontrol edilmelidir; pod'lardan UDP 161 erişimi de bu sırada doğrulanır.
 - Gerçek Windows Active Directory ile LDAPS bağlantısı: testler OpenLDAP üzerinde yapıldı. AD'ye özgü `objectGUID` (ikili GUID) ve `userAccountControl` (devre dışı biti) okuma kodu birim düzeyinde yazıldı ama gerçek AD'de doğrulanmadı. İlk kurulumda **Bağlantıyı test et** ve **Önizleme** ile kontrol edilmelidir.
 - Ingress denetleyicisinin gövde sınırı ve TLS ayarları.
 - Yedekleme ve geri yükleme prosedürünün kurum altyapısında denenmesi.

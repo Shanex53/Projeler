@@ -1,0 +1,249 @@
+@page "/yazicilar/{Id:guid}"
+@inject Api Api
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>@(d?.Printer.Name ?? "Yazıcı") · Nurol Envanter</PageTitle>
+@if (d is null)
+{
+    @if (error is not null) { <ErrorNote Error="error" /> } else { <div class="loading">Yükleniyor…</div> }
+}
+else
+{
+    var p = d.Printer;
+    <div class="head">
+        <div class="t">
+            <div class="crumb"><a href="yazicilar">Yazıcılar</a> / @p.WarehouseName</div>
+            <h1>@p.Name</h1>
+            <p>
+                <span class="mono">@p.Host</span> · @(p.Model ?? "Model bilinmiyor") ·
+                @if (p.Online == true) { <span class="pill p-ok">Çevrimiçi</span> } else if (p.Online == false) { <span class="pill p-crit">Ulaşılamıyor</span> } else { <span class="pill p-mute">Okunmadı</span> }
+            </p>
+        </div>
+        <button class="btn" disabled="@busy" @onclick="Refresh">@(busy ? "Okunuyor…" : "Şimdi oku")</button>
+        @if (p.CanManage)
+        {
+            <button class="btn" @onclick="() => editing = true">Düzenle</button>
+            <button class="btn danger" @onclick="() => deleting = true">Sil</button>
+        }
+    </div>
+    @if (p.Online == false && p.LastError is not null) { <div class="note error"><b>Son okuma başarısız:</b> @p.LastError Aşağıdaki seviyeler @Fmt.DateTime(p.LastSuccessAt) tarihli son başarılı okumadandır.</div> }
+    <ErrorNote Error="error" />
+
+    @if (p.Warnings.Count > 0)
+    {
+        <section class="card">
+            <div class="ch"><h2>Uyarılar</h2></div>
+            <div class="cb" style="padding-block:4px">
+                <ul class="warn-list">
+                    @foreach (var w in p.Warnings)
+                    {
+                        <li><span class="dot @(w.Severity == "Kritik" ? "crit" : "")"></span><div>@w.Message</div><span class="pill @(w.Severity == "Kritik" ? "p-crit" : "p-warn")">@w.Severity</span></li>
+                    }
+                </ul>
+            </div>
+        </section>
+    }
+
+    <section class="card">
+            <div class="ch"><h2>Toner ve sarf</h2><span class="muted" style="font-size:12px">Uyarı eşiği %@d.LowThreshold</span></div>
+            <div class="tw">
+                <table>
+                    <thead><tr><th>Yuva</th><th style="width:190px">Seviye</th><th>Kullanılacak toner</th><th class="right">Stok (bu depo / toplam)</th><th></th></tr></thead>
+                    <tbody>
+                        @if (p.Supplies.Count == 0) { <tr><td colspan="5" class="empty">Yazıcı sarf bilgisi göndermiyor veya henüz okunmadı.</td></tr> }
+                        @foreach (var s in p.Supplies)
+                        {
+                            var key = s.Key;
+                            <tr>
+                                <td><b>@s.Description</b><span class="sub">@s.Type@(s.Color is null ? "" : " · " + s.Color)</span>@if (s.PendingReplacement) { <span class="tag info">değişim algılandı</span> }</td>
+                                <td><SupplyBar S="s" ShowName="false" /></td>
+                                <td>
+                                    @if (p.CanManage && s.Monitored && s.Type != "Atık toner")
+                                    {
+                                        <select class="sel-in" style="max-width:240px" aria-label="@($"{s.Description} toneri")" value="@s.StockItemId" @onchange="e => Map(key, e.Value)">
+                                            <option value="">Seçilmedi</option>
+                                            @foreach (var t in toners) { <option value="@t.Id">@t.Name (@t.Code)</option> }
+                                        </select>
+                                    }
+                                    else if (s.StockItemName is not null) { @s.StockItemName <span class="sub mono">@s.StockItemCode</span> }
+                                    else { <span class="muted">—</span> }
+                                </td>
+                                <td class="num right">
+                                    @if (s.StockItemId is not null)
+                                    {
+                                        <span class="@(s.StockInWarehouse > 0 ? "" : "pill p-crit")">@Fmt.Qty(s.StockInWarehouse ?? 0)</span> <span class="muted">/ @Fmt.Qty(s.StockTotal ?? 0)</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (p.CanManage && s.Monitored)
+                                    {
+                                        <button class="btn sm @(s.PendingReplacement ? "pri" : "")" @onclick="() => OpenReplace(s)">@(s.PendingReplacement ? "Değişimi onayla" : "Değiştirildi")</button>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            @if (p.CanManage)
+            {
+                <div class="toolbar foot">
+                    <label class="check"><input type="checkbox" @bind="applyToSameModel" /> Toner seçimini aynı modeldeki diğer yazıcılara da uygula</label>
+                </div>
+            }
+    </section>
+
+    <div class="grid g2e">
+            <section class="card">
+                <div class="ch"><h2>Bilgiler</h2></div>
+                <div class="cb">
+                    <dl class="kv">
+                        <dt>Sayfa sayacı</dt><dd class="num"><b>@(p.PageCount?.ToString("N0", Fmt.Tr) ?? "—")</b></dd>
+                        <dt>Son 30 gün</dt><dd class="num">@(d.PagesLast30Days is long l ? l.ToString("N0", Fmt.Tr) + " sayfa" : "—")</dd>
+                        <dt>Model</dt><dd>@(p.Model ?? "—")</dd>
+                        <dt>Seri no</dt><dd class="mono">@(d.SerialNumber ?? "—")</dd>
+                        <dt>Ağ adı</dt><dd class="mono">@(d.SysName ?? "—")</dd>
+                        <dt>Konum</dt><dd>@(p.Location ?? "—")</dd>
+                        <dt>Depo</dt><dd>@p.WarehouseName</dd>
+                        <dt>SNMP</dt><dd class="mono">@d.SnmpVersion · @p.Host:@d.Port</dd>
+                        <dt>Son okuma</dt><dd>@Fmt.DateTime(p.LastPolledAt)</dd>
+                    </dl>
+                </div>
+            </section>
+            <section class="card">
+                <div class="ch"><h2>Günlük baskı</h2><a class="btn sm" href="raporlar?r=yazici-sayac">Sayaç raporu</a></div>
+                <div class="tw" style="max-height:300px;overflow-y:auto">
+                    <table>
+                        <thead><tr><th>Gün</th><th class="right">Basılan</th><th class="right">Sayaç</th></tr></thead>
+                        <tbody>
+                            @if (d.Counters.Count == 0) { <tr><td colspan="3" class="empty">Henüz sayaç okuması yok.</td></tr> }
+                            @foreach (var c in d.Counters) { <tr><td class="num">@c.Day.ToString("dd.MM.yyyy")</td><td class="num right">@(c.Pages?.ToString("N0", Fmt.Tr) ?? "—")</td><td class="num right muted">@c.PageCount.ToString("N0", Fmt.Tr)</td></tr> }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+    </div>
+
+    <section class="card">
+        <div class="ch"><h2>Olaylar</h2></div>
+        <div class="cb">
+            @if (d.Events.Count == 0) { <p class="muted" style="margin:0">Henüz olay yok.</p> }
+            <ol class="timeline">
+                @foreach (var e in d.Events)
+                {
+                    <li style="--accent:@(e.Type switch { "Sarf bitti" or "Ulaşılamıyor" => "var(--crit)", "Sarf azaldı" => "var(--warn)", "Değişim algılandı" or "Toner değişimi" => "var(--move)", _ => "var(--ok)" })">
+                        <b>@e.Type</b><span>@e.Text</span><span class="muted" style="display:block;font-size:12px">@Fmt.DateTime(e.At) · @e.UserName</span>
+                    </li>
+                }
+            </ol>
+        </div>
+    </section>
+}
+
+@if (replacing is not null && d is not null)
+{
+    <Modal Title="@($"{replacing.Description} değiştirildi")" OnClose="() => replacing = null">
+        <ChildContent>
+            <div class="form">
+                @if (replacing.StockItemId is not null)
+                {
+                    <label class="check"><input type="checkbox" @bind="consume" /> 1 adet @replacing.StockItemName stoktan düşülsün (@d.Printer.WarehouseName, mevcut @Fmt.Qty(replacing.StockInWarehouse ?? 0))</label>
+                }
+                else { <p class="note warn" style="margin:0">Bu yuva için toner seçilmediğinden stoktan düşülemez; yalnızca değişim kaydedilir.</p> }
+                <label class="fld" for="rp-note">Not<input id="rp-note" @bind="replaceNote" placeholder="İsteğe bağlı" /></label>
+                <ErrorNote Error="replaceError" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => replacing = null">Vazgeç</button>
+            <button class="btn pri" disabled="@busy" @onclick="Replace">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
+@if (editing && d is not null)
+{
+    <PrinterEditor Existing="d" Warehouses="warehouses" OnClose="() => editing = false" OnSaved="Edited" />
+}
+
+@if (deleting && d is not null)
+{
+    <Modal Title="Yazıcıyı sil" OnClose="() => deleting = false">
+        <ChildContent><p style="margin:0">@d.Printer.Name izlemeden kaldırılacak; sayaç geçmişi ve olaylar da silinir. Yalnızca izlemeyi durdurmak için “Düzenle → İzleme açık” işaretini kaldırın.</p></ChildContent>
+        <Footer><button class="btn" @onclick="() => deleting = false">Vazgeç</button><button class="btn danger" @onclick="Delete">Sil</button></Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    PrinterDetail? d;
+    List<StockItemDto> toners = [];
+    List<WarehouseDto> warehouses = [];
+    PrinterSupplyDto? replacing;
+    ApiException? error, replaceError;
+    bool busy, editing, deleting, consume = true, applyToSameModel;
+    string? replaceNote;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        warehouses = await Api.Get<List<WarehouseDto>>("api/warehouses");
+        await Load();
+    }
+
+    async Task Load()
+    {
+        try
+        {
+            d = await Api.Get<PrinterDetail>($"api/printers/{Id}");
+            var company = warehouses.FirstOrDefault(w => w.Id == d.Printer.WarehouseId)?.CompanyId;
+            toners = (await Api.Get<List<StockItemDto>>("api/stock" + (company is null ? "" : $"?companyId={company}"))).ToList();
+            error = null;
+        }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task Refresh()
+    {
+        busy = true;
+        try { d = await Api.Post<PrinterDetail>($"api/printers/{Id}/refresh", null); Toasts.Show(d.Printer.Online == true ? "Yazıcı okundu" : "Yazıcıya ulaşılamadı"); }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Map(string key, object? value)
+    {
+        Guid? sid = Guid.TryParse(value?.ToString(), out var g) ? g : null;
+        try
+        {
+            var r = await Api.Put<System.Text.Json.JsonElement>($"api/printers/{Id}/supplies/{key}/toner", new PrinterTonerMap(sid, applyToSameModel));
+            var n = r.GetProperty("updated").GetInt32();
+            Toasts.Show(sid is null ? "Toner seçimi kaldırıldı" : n > 1 ? $"Toner {n} yazıcıya uygulandı" : "Toner kaydedildi");
+            await Load();
+        }
+        catch (ApiException ex) { Toasts.Show(ex.Message); await Load(); }
+    }
+
+    void OpenReplace(PrinterSupplyDto s) { replacing = s; consume = s.StockItemId is not null && s.StockInWarehouse > 0; replaceNote = null; replaceError = null; }
+
+    async Task Replace()
+    {
+        busy = true; replaceError = null;
+        try
+        {
+            d = await Api.Post<PrinterDetail>($"api/printers/{Id}/supplies/{replacing!.Key}/replace", new PrinterReplace(consume && replacing.StockItemId is not null, replaceNote), Guid.NewGuid().ToString("N"));
+            Toasts.Show(consume ? "Değişim kaydedildi ve stoktan düşüldü" : "Değişim kaydedildi");
+            replacing = null;
+        }
+        catch (ApiException ex) { replaceError = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Edited(PrinterDetail x) { editing = false; d = x; Toasts.Show("Yazıcı kaydedildi"); await Load(); }
+
+    async Task Delete()
+    {
+        try { await Api.Delete<object>($"api/printers/{Id}"); Toasts.Show("Yazıcı silindi"); Nav.NavigateTo("yazicilar"); }
+        catch (ApiException ex) { error = ex; deleting = false; }
+    }
+}
