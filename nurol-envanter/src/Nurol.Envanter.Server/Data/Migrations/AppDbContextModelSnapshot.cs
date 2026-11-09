@@ -278,6 +278,10 @@ namespace Nurol.Envanter.Server.Data.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("normalized_user_name");
 
+                    b.Property<bool>("NotifyByEmail")
+                        .HasColumnType("boolean")
+                        .HasColumnName("notify_by_email");
+
                     b.Property<string>("PasswordHash")
                         .HasColumnType("text")
                         .HasColumnName("password_hash");
@@ -1181,6 +1185,76 @@ namespace Nurol.Envanter.Server.Data.Migrations
                         .HasDatabaseName("ix_manufacturers_name");
 
                     b.ToTable("manufacturers", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.OutboxMail", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<string>("BodyHtml")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("body_html");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DedupKey")
+                        .HasColumnType("text")
+                        .HasColumnName("dedup_key");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("LastError")
+                        .HasColumnType("text")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset>("SendAfter")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("send_after");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("subject");
+
+                    b.Property<string>("ToEmail")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("to_email");
+
+                    b.Property<string>("ToName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("to_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_outbox_mails");
+
+                    b.HasIndex("DedupKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_outbox_mails_dedup_key")
+                        .HasFilter("dedup_key IS NOT NULL");
+
+                    b.HasIndex("SentAt", "SendAfter")
+                        .HasDatabaseName("ix_outbox_mails_sent_at_send_after");
+
+                    b.ToTable("outbox_mails", (string)null);
                 });
 
             modelBuilder.Entity("Nurol.Envanter.Server.Data.SavedView", b =>

@@ -3,6 +3,7 @@
 @inject Session Session
 @inject NavigationManager Nav
 @inject Toasts Toasts
+@inject Api Api
 
 @if (!ready)
 {
@@ -20,17 +21,22 @@ else
                 <NavLink href="zimmetler"><Icon Name="zimmetler" />Zimmetler</NavLink>
                 <NavLink href="transferler"><Icon Name="transferler" />Transferler</NavLink>
                 <NavLink href="personeller"><Icon Name="personeller" />Personeller</NavLink>
+                <NavLink href="okut"><Icon Name="okut" />Kod okut</NavLink>
                 <div class="sep">Tanımlar</div>
                 <NavLink href="kategoriler"><Icon Name="kategoriler" />Kategoriler ve Alanlar</NavLink>
                 <NavLink href="depolar"><Icon Name="depolar" />Depolar</NavLink>
                 <div class="sep">Sistem</div>
                 <NavLink href="raporlar"><Icon Name="raporlar" />Raporlar</NavLink>
+                @if (Session.CanWrite)
+                {
+                    <NavLink href="toplu-ekleme"><Icon Name="ekle" />Excel ile ekleme</NavLink>
+                }
                 @if (Session.IsSystemAdmin)
                 {
                     <NavLink href="yonetim"><Icon Name="yonetim" />Yönetim</NavLink>
                 }
             </nav>
-            <div class="side-foot">Raporlar, bildirimler ve barkod 3. aşamada eklenecek.</div>
+            <div class="side-foot"><a href="hesabim" style="color:#8fb4f5">Hesabım ve bildirim ayarları</a></div>
         </aside>
         <div class="main">
             <header class="top">
@@ -42,7 +48,7 @@ else
                 <div class="sp"></div>
                 <div class="user">
                     <div class="avatar">@Initials</div>
-                    <span class="who"><b>@Session.Me?.DisplayName</b><br /><span class="muted" style="font-size:11.5px">@Session.RoleLabel</span></span>
+                    <a class="who" href="hesabim" style="color:inherit;text-decoration:none"><b>@Session.Me?.DisplayName</b><br /><span class="muted" style="font-size:11.5px">@Session.RoleLabel</span></a>
                     <button class="btn sm" @onclick="Logout">Çıkış</button>
                 </div>
             </header>
@@ -76,9 +82,20 @@ else
 
     void Refresh() => InvokeAsync(StateHasChanged);
 
-    void Search()
+    // Okutulan veya yazılan kod tek bir cihaza denk geliyorsa doğrudan cihaza gider; değilse listede arar.
+    async Task Search()
     {
-        if (!string.IsNullOrWhiteSpace(q)) Nav.NavigateTo($"envanter?q={Uri.EscapeDataString(q.Trim())}");
+        if (string.IsNullOrWhiteSpace(q)) return;
+        var term = q.Trim();
+        try
+        {
+            var hit = await Api.Get<LookupResult>($"api/items/lookup?code={Uri.EscapeDataString(term)}");
+            q = null;
+            Nav.NavigateTo($"envanter/{hit.ItemId}");
+            return;
+        }
+        catch (ApiException) { }
+        Nav.NavigateTo($"envanter?q={Uri.EscapeDataString(term)}");
     }
 
     async Task Logout()

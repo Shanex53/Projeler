@@ -1,0 +1,37 @@
+@inject Api Api
+@* Etiket basımı: kâğıt düzeni ve başlangıç konumu (kısmen kullanılmış etiket kâğıdı için). *@
+<Modal Title="Etiket yazdır" OnClose="OnClose">
+    <ChildContent>
+        <div class="form">
+            <p style="margin:0">@Description</p>
+            <label class="fld" for="lb-layout">Etiket kâğıdı
+                <select id="lb-layout" @bind="layout">
+                    @foreach (var l in layouts) { <option value="@l.Key">@l.Name</option> }
+                </select>
+            </label>
+            <label class="fld" for="lb-start">Başlangıç konumu
+                <input id="lb-start" type="number" min="1" max="@Max" @bind="start" />
+                <span class="help">Kâğıdın ilk etiketleri kullanılmışsa ilk boş konumun sırasını yazın (soldan sağa, yukarıdan aşağı).</span>
+            </label>
+            <p class="note" style="margin:0">QR kod yalnızca envanter etiketini içerir; “Kod okut” sayfası veya el tipi okuyucuyla okutulabilir. PDF'i yazdırırken ölçeği <b>%100 (gerçek boyut)</b> seçin.</p>
+        </div>
+    </ChildContent>
+    <Footer>
+        <button class="btn" @onclick="OnClose">Vazgeç</button>
+        <a class="btn pri" href="@Url" download @onclick="OnClose">PDF oluştur</a>
+    </Footer>
+</Modal>
+
+@code {
+    record Layout(string Key, string Name, int Count);
+    [Parameter] public string Query { get; set; } = "";
+    [Parameter] public string Description { get; set; } = "";
+    [Parameter] public EventCallback OnClose { get; set; }
+    List<Layout> layouts = [];
+    string layout = "a4-3x8";
+    int start = 1;
+    int Max => layouts.FirstOrDefault(l => l.Key == layout)?.Count ?? 24;
+    string Url => $"api/labels?{Query}&layout={layout}&start={Math.Clamp(start, 1, Max)}";
+
+    protected override async Task OnInitializedAsync() => layouts = await Api.Get<List<Layout>>("api/labels/layouts");
+}

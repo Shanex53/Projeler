@@ -14,6 +14,7 @@ else
     <div class="seg" role="tablist" style="align-self:flex-start">
         <button role="tab" aria-selected="@(tab == "users")" class="@(tab == "users" ? "on" : "")" @onclick='() => tab = "users"'>Kullanıcılar</button>
         <button role="tab" aria-selected="@(tab == "ad")" class="@(tab == "ad" ? "on" : "")" @onclick="OpenAd">Active Directory</button>
+        <button role="tab" aria-selected="@(tab == "mail")" class="@(tab == "mail" ? "on" : "")" @onclick="OpenMail">Bildirimler</button>
     </div>
 
     @if (tab == "users")
@@ -54,7 +55,65 @@ else
             </section>
         </div>
     }
-    else if (ad is not null)
+    else if (tab == "mail" && mail is not null)
+    {
+        <div class="grid g2">
+            <section class="card">
+                <div class="ch"><h2>E-posta gönderimi</h2><span class="pill @(mail.Enabled ? "p-ok" : "p-mute")">@(mail.Enabled ? "Açık" : "Kapalı")</span></div>
+                <div class="cb stack">
+                    @if (!mail.Enabled) { <div class="note warn">E-posta gönderimi kapalı. SMTP ayarları kurulumda Helm değerleri (<span class="mono">smtp.*</span>) ve Secret ile verilir. Kapalıyken bildirimler sırada bekler, gönderilmez.</div> }
+                    <dl class="kv">
+                        <dt>SMTP sunucusu</dt><dd class="mono">@(mail.Host is null ? "—" : $"{mail.Host}:{mail.Port}")</dd>
+                        <dt>Gönderen</dt><dd>@(mail.From ?? "—")</dd>
+                        <dt>Bağlantı adresi</dt><dd class="mono">@(mail.BaseUrl ?? "— (e-postalarda bağlantı olmaz)")</dd>
+                        <dt>Sırada bekleyen</dt><dd class="num">@mail.Pending</dd>
+                        <dt>Gönderilemeyen</dt><dd class="num">@if (mail.Failed > 0) { <span class="pill p-crit">@mail.Failed</span> } else { <span>0</span> }</dd>
+                    </dl>
+                    <div class="row">
+                        <button class="btn" disabled="@busy" @onclick="MailTest">Kendime test e-postası gönder</button>
+                        <button class="btn" disabled="@busy" @onclick="Digest">Günlük özeti şimdi oluştur</button>
+                    </div>
+                    @if (mailMessage is not null) { <div class="note">@mailMessage</div> }
+                    <ErrorNote Error="error" />
+                </div>
+            </section>
+            <section class="card">
+                <div class="ch"><h2>Bildirim türleri</h2></div>
+                <div class="cb">
+                    <dl class="kv">
+                        <dt>Transfer yolda</dt><dd>Transfer gönderildiğinde hedef depo sorumlularına ve şirket yöneticilerine anında.</dd>
+                        <dt>Günlük özet</dt><dd>Teslim alınmayı bekleyen transferler, imzalı evrakı birkaç günden uzun süredir eksik tutanaklar, kritik stok ve açık zimmeti kalan pasif personel. Bildirecek bir şey yoksa gönderilmez.</dd>
+                        <dt>AD'den ayrılan</dt><dd>AD eşitlemesinde açık zimmetli personel pasife alınınca sistem yöneticilerine.</dd>
+                    </dl>
+                    <p class="note" style="margin:12px 0 0">Kullanıcılar e-posta adresini ve bildirim tercihini “Hesabım” sayfasından yönetir.</p>
+                </div>
+            </section>
+        </div>
+        <section class="card">
+            <div class="ch"><h2>Son e-postalar</h2></div>
+            <div class="tw">
+                <table>
+                    <thead><tr><th>Oluşturma</th><th>Tür</th><th>Alıcı</th><th>Konu</th><th>Durum</th><th></th></tr></thead>
+                    <tbody>
+                        @if (mail.Recent.Count == 0) { <tr><td colspan="6" class="empty">Henüz bildirim üretilmedi.</td></tr> }
+                        @foreach (var m in mail.Recent)
+                        {
+                            <tr>
+                                <td class="num">@Fmt.DateTime(m.CreatedAt)</td><td>@m.Kind</td><td>@m.To</td><td>@m.Subject</td>
+                                <td>
+                                    @if (m.SentAt is not null) { <span class="pill p-ok">Gönderildi</span> }
+                                    else if (m.LastError is not null) { <span class="pill p-crit" title="@m.LastError">Hata (@m.Attempts)</span><span class="sub">@m.LastError</span> }
+                                    else { <span class="pill p-info">Sırada</span> }
+                                </td>
+                                <td>@if (m.SentAt is null && m.LastError is not null) { <button class="btn sm" @onclick="() => Retry(m.Id)">Tekrar dene</button> }</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    }
+    else if (tab == "ad" && ad is not null)
     {
         <div class="grid g2">
             <div class="stack">
@@ -305,6 +364,38 @@ else
     }
 
     async Task Load() => users = await Api.Get<List<UserDto>>("api/users");
+
+    NotificationStatusDto? mail;
+    string? mailMessage;
+
+    async Task OpenMail()
+    {
+        tab = "mail"; error = null; mailMessage = null;
+        try { mail = await Api.Get<NotificationStatusDto>("api/notifications/status"); }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task MailTest()
+    {
+        busy = true; error = null;
+        try { mailMessage = (await Api.Post<System.Text.Json.JsonElement>("api/notifications/test", null)).GetProperty("message").GetString(); await OpenMail(); }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Digest()
+    {
+        busy = true; error = null;
+        try { var r = await Api.Post<System.Text.Json.JsonElement>("api/notifications/digest", null); var msg = r.GetProperty("message").GetString(); await OpenMail(); mailMessage = msg; }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Retry(Guid id)
+    {
+        try { await Api.Post($"api/notifications/{id}/retry"); await OpenMail(); }
+        catch (ApiException ex) { error = ex; }
+    }
 
     async Task OpenAd()
     {

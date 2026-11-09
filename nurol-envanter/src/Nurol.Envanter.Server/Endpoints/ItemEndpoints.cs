@@ -74,20 +74,7 @@ public static class ItemEndpoints
             await EnsureSerialFree(db, model.ManufacturerId, serial, null);
 
             await using var tx = await db.Database.BeginTransactionAsync();
-            var n = await Counters.NextAsync(db, $"TAG-{wh.Company!.Code}-{model.Category.Code}");
-            var item = new InventoryItem
-            {
-                Id = Guid.NewGuid(),
-                Tag = $"{wh.Company.Code}-{model.Category.Code}-{n:000000}",
-                CompanyId = wh.CompanyId, CategoryId = model.CategoryId, ManufacturerId = model.ManufacturerId, AssetModelId = model.Id,
-                WarehouseId = wh.Id, LocationId = req.LocationId, Serial = serial, Status = ItemStatus.InStock,
-                Cost = req.Cost, Notes = Trim(req.Notes), CreatedAt = DateTimeOffset.UtcNow
-            };
-            db.Items.Add(item);
-            var fields = await FieldRules.ActiveFieldsAsync(db, model.CategoryId, model.Id);
-            await FieldRules.ApplyAsync(db, item, fields, req.Fields ?? []);
-            Event(db, item.Id, "Kayıt", $"Envantere eklendi: {wh.Name}", a.UserName);
-            Audit.Add(db, a, "Oluşturma", "Envanter", item.Id, item.Tag);
+            var item = await CreateAsync(db, a, model, wh, req.LocationId, serial, req.Cost, Trim(req.Notes), req.Fields ?? [], "Envantere eklendi");
             await db.SaveChangesAsync();
             await tx.CommitAsync();
             return Results.Ok(new { item.Id, item.Tag });
@@ -262,6 +249,27 @@ public static class ItemEndpoints
             i.OpenAssignmentId, i.OpenAssignment?.No, i.Cost, i.Notes, i.MaintenanceNote, i.Version, fields, history, docs);
     }
 
+    /// <summary>Yeni tekil kayıt: şirket ve kategori koduna göre etiket üretir, özel alanları doğrular. SaveChanges çağırana aittir.</summary>
+    internal static async Task<InventoryItem> CreateAsync(AppDbContext db, Access a, AssetModel model, Warehouse wh, Guid? locationId, string? serial,
+        decimal? cost, string? notes, IReadOnlyDictionary<Guid, string?> fieldValues, string eventText)
+    {
+        var n = await Counters.NextAsync(db, $"TAG-{wh.Company!.Code}-{model.Category!.Code}");
+        var item = new InventoryItem
+        {
+            Id = Guid.NewGuid(),
+            Tag = $"{wh.Company.Code}-{model.Category.Code}-{n:000000}",
+            CompanyId = wh.CompanyId, CategoryId = model.CategoryId, ManufacturerId = model.ManufacturerId, AssetModelId = model.Id,
+            WarehouseId = wh.Id, LocationId = locationId, Serial = serial, Status = ItemStatus.InStock,
+            Cost = cost, Notes = notes, CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.Items.Add(item);
+        var fields = await FieldRules.ActiveFieldsAsync(db, model.CategoryId, model.Id);
+        await FieldRules.ApplyAsync(db, item, fields, fieldValues);
+        Event(db, item.Id, "Kayıt", $"{eventText}: {wh.Name}", a.UserName);
+        Audit.Add(db, a, "Oluşturma", "Envanter", item.Id, item.Tag);
+        return item;
+    }
+
     internal static void Event(AppDbContext db, Guid itemId, string type, string text, string user, string? reference = null) =>
         db.ItemEvents.Add(new ItemEvent { Id = Guid.NewGuid(), ItemId = itemId, At = DateTimeOffset.UtcNow, Type = type, Text = text, UserName = user, Reference = reference });
 
@@ -279,6 +287,6 @@ public static class ItemEndpoints
             throw AppException.Conflict($"Bu seri numarası aynı markanın başka bir cihazında ({other}) kayıtlı.");
     }
 
-    static string? NormalizeSerial(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().ToUpperInvariant();
+    internal static string? NormalizeSerial(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim().ToUpperInvariant();
     static string? Trim(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 }

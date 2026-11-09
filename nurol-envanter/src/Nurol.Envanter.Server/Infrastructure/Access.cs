@@ -27,9 +27,11 @@ public class Access
     /// <summary>Şirket düzeyinde yetkili olunan şirketler (depo sınırı olmayan atamalar).</summary>
     public HashSet<Guid> CompanyWide { get; private init; } = [];
 
-    public static async Task<Access> Load(ClaimsPrincipal principal, AppDbContext db, CancellationToken ct = default)
+    public static Task<Access> Load(ClaimsPrincipal principal, AppDbContext db, CancellationToken ct = default) =>
+        ForUser(db, principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new AppException(401, "Oturum bulunamadı."), ct);
+
+    public static async Task<Access> ForUser(AppDbContext db, string userId, CancellationToken ct = default)
     {
-        var userId = principal.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new AppException(401, "Oturum bulunamadı.");
         var user = await db.Users.AsNoTracking().Include(u => u.Scopes).FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null || !user.IsActive) throw new AppException(401, "Hesabınız devre dışı.");
         var role = await (from ur in db.UserRoles join r in db.Roles on ur.RoleId equals r.Id where ur.UserId == userId select r.Name).FirstOrDefaultAsync(ct) ?? "";

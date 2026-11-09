@@ -1,0 +1,104 @@
+@page "/okut"
+@implements IAsyncDisposable
+@inject Api Api
+@inject NavigationManager Nav
+@inject IJSRuntime JS
+
+<PageTitle>Kod okut · Nurol Envanter</PageTitle>
+<div class="head"><div class="t"><h1>Kod okut</h1><p>Etiketteki QR kodu, seri numarasını veya IMEI'yi okutun ya da yazın; cihazın sayfası açılır.</p></div></div>
+
+<div class="grid g2e">
+    <section class="card">
+        <div class="ch"><h2>El tipi okuyucu veya klavye</h2></div>
+        <div class="cb stack">
+            <form class="row" @onsubmit="Lookup">
+                <div class="search" style="flex:1;max-width:none"><label class="sr" for="scan-code">Kod</label>
+                    <input id="scan-code" @bind="code" autocomplete="off" autofocus placeholder="NRL-TLF-000214, seri no veya IMEI" />
+                </div>
+                <button class="btn pri" type="submit" disabled="@busy">Bul</button>
+            </form>
+            <p class="muted" style="margin:0;font-size:12.5px">USB veya Bluetooth okuyucular klavye gibi çalışır: imleç bu kutudayken etiketi okutun, okuyucu Enter'a kendisi basar.</p>
+            <ErrorNote Error="error" />
+            @if (last is not null) { <div class="note">Son bulunan: <a href="envanter/@last.ItemId">@last.Tag</a> (@last.MatchedBy ile)</div> }
+        </div>
+    </section>
+    <section class="card">
+        <div class="ch"><h2>Kamera</h2>@if (scanning) { <button class="btn sm" @onclick="Stop">Durdur</button> }</div>
+        <div class="cb stack">
+            @if (supported == false)
+            {
+                <p class="muted" style="margin:0">Bu tarayıcı kamerayla kod okumayı desteklemiyor. Android'de Chrome veya Edge kullanın; diğer cihazlarda el tipi okuyucu ya da elle giriş kullanılabilir.</p>
+            }
+            else
+            {
+                <video id="scan-video" playsinline muted style="width:100%;max-height:340px;border-radius:8px;background:#0b182b;@(scanning ? "" : "display:none")"></video>
+                @if (!scanning) { <button class="btn pri" style="align-self:flex-start" @onclick="Start">Kamerayı aç</button> }
+                @if (camError is not null) { <div class="note error">@camError</div> }
+            }
+        </div>
+    </section>
+</div>
+
+@code {
+    string? code, camError;
+    bool busy, scanning;
+    bool? supported;
+    LookupResult? last;
+    ApiException? error;
+    DotNetObjectReference<Scan>? self;
+
+    protected override async Task OnAfterRenderAsync(bool first)
+    {
+        if (!first) return;
+        try { supported = await JS.InvokeAsync<bool>("ne.scan.supported"); } catch (JSException) { supported = false; }
+        StateHasChanged();
+    }
+
+    async Task Lookup()
+    {
+        if (string.IsNullOrWhiteSpace(code)) return;
+        busy = true; error = null;
+        try
+        {
+            last = await Api.Get<LookupResult>($"api/items/lookup?code={Uri.EscapeDataString(code.Trim())}");
+            Nav.NavigateTo($"envanter/{last.ItemId}");
+        }
+        catch (ApiException ex) { error = ex; code = null; }
+        finally { busy = false; }
+    }
+
+    async Task Start()
+    {
+        camError = null;
+        self ??= DotNetObjectReference.Create(this);
+        scanning = true;
+        StateHasChanged();
+        var r = await JS.InvokeAsync<string>("ne.scan.start", "scan-video", self);
+        if (r != "ok")
+        {
+            scanning = false;
+            camError = r == "izin" ? "Kamera izni verilmedi. Tarayıcı adres çubuğundan kamera iznini açın." : "Kamera açılamadı. Başka bir uygulama kullanıyor olabilir.";
+        }
+    }
+
+    async Task Stop()
+    {
+        scanning = false;
+        try { await JS.InvokeVoidAsync("ne.scan.stop"); } catch (JSException) { }
+    }
+
+    [JSInvokable]
+    public async Task OnCode(string value)
+    {
+        scanning = false;
+        code = value;
+        await InvokeAsync(StateHasChanged);
+        await Lookup();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try { await JS.InvokeVoidAsync("ne.scan.stop"); } catch (JSException) { } catch (JSDisconnectedException) { }
+        self?.Dispose();
+    }
+}

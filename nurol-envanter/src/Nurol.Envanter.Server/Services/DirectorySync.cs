@@ -14,7 +14,7 @@ namespace Nurol.Envanter.Server.Services;
 /// - Pasife alınan personelin geçmişi korunur; açık zimmeti varsa raporda belirtilir. Bağlı uygulama hesabı kapatılır, oturumları iptal edilir.
 /// - Aynı anda tek eşitleme çalışır (PostgreSQL advisory lock).
 /// </summary>
-public class DirectorySync(AppDbContext db, IDirectoryClient dir, DirectoryOptions o, ILogger<DirectorySync> log)
+public class DirectorySync(AppDbContext db, IDirectoryClient dir, DirectoryOptions o, Notifier notifier, ILogger<DirectorySync> log)
 {
     const long LockKey = 472020;
 
@@ -167,6 +167,9 @@ public class DirectorySync(AppDbContext db, IDirectoryClient dir, DirectoryOptio
         else
         {
             run.Status = "Başarılı";
+            var offboarded = deactivatedIds.Where(id => openItems.GetValueOrDefault(id) > 0)
+                .Select(id => (linked.Values.First(e => e.Id == id).FullName, openItems[id])).ToList();
+            await notifier.DirectoryOffboardingAsync(run, offboarded);
             db.AuditEvents.Add(new AuditEvent { At = now, UserName = userName, Action = "AD eşitlemesi", Entity = "Personel",
                 Details = $"Bulunan {run.Found}, yeni {run.Created}, güncellenen {run.Updated}, pasife alınan {run.Deactivated}, eşleşmeyen {run.Unmatched}" });
         }

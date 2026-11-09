@@ -9,6 +9,8 @@
 <div class="head">
     <div class="t"><h1>Envanter</h1><p>Tekil demirbaşlar. Miktarla izlenen malzemeler <a href="stok">Stok</a> sayfasında.</p></div>
     <a class="btn" href="@ExportUrl" download>Dışa aktar (CSV)</a>
+    <button class="btn" @onclick="() => labels = true" disabled="@(result is null || result.Total == 0)">Etiket yazdır</button>
+    @if (Session.CanWrite) { <a class="btn" href="toplu-ekleme">Excel ile ekle</a> }
     @if (Session.CanWrite) { <a class="btn pri" href="envanter/yeni">+ Envanter ekle</a> }
 </div>
 
@@ -117,6 +119,11 @@
     }
 </section>
 
+@if (labels && result is not null)
+{
+    <LabelModal Query="@Query(false)" Description="@($"Listedeki filtreye uyan {result.Total} cihaz için etiket basılacak (en fazla 1000).")" OnClose="() => labels = false" />
+}
+
 @if (saveOpen)
 {
     <Modal Title="Görünümü kaydet" OnClose="() => saveOpen = false">
@@ -152,7 +159,7 @@
     string? q, viewName;
     Guid? categoryId, warehouseId;
     ItemStatus? status;
-    bool missingDoc, colsOpen, desc, dirty, saveOpen;
+    bool missingDoc, colsOpen, desc, dirty, saveOpen, labels;
     string sort = "tag";
     int page = 1;
 
@@ -170,9 +177,18 @@
         new("cost", "Maliyet", "cost", false, null) { On = false },
     ];
 
+    string? lastQ;
+    bool initialized;
+
+    // Üst arama kutusu bu sayfa açıkken yeni bir arama yaparsa sayfa yeniden kurulmaz; parametre değişikliğini burada uygularız.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (initialized && Q != lastQ) { lastQ = Q; q = Q; active = null; await Reload(); }
+    }
+
     protected override async Task OnInitializedAsync()
     {
-        q = Q;
+        q = Q; lastQ = Q;
         if (Enum.TryParse<ItemStatus>(Durum, out var s)) status = s;
         try
         {
@@ -189,6 +205,7 @@
         }
         catch (ApiException ex) { error = ex; cols = BuildCols(null); }
         await Load();
+        initialized = true;
     }
 
     List<Col> BuildCols(List<string[]>? prefs)

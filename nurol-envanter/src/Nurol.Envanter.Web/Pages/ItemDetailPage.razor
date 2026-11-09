@@ -16,6 +16,7 @@ else
             <h1 style="font-family:var(--mono)">@item.Tag</h1>
             <p>@item.ManufacturerName @item.ModelName · <StatusPill Status="item.Status" /></p>
         </div>
+        <button class="btn" @onclick="() => labels = true">Etiket</button>
         @if (canWrite)
         {
             @switch (item.Status)
@@ -123,6 +124,11 @@ else
     </div>
 }
 
+@if (labels && item is not null)
+{
+    <LabelModal Query="@($"ids={item.Id}")" Description="@($"{item.Tag} için tek etiket basılacak.")" OnClose="() => labels = false" />
+}
+
 @if (action is not null)
 {
     <Modal Title="@ActionTitle" OnClose="() => action = null">
@@ -148,7 +154,7 @@ else
     ItemDetail? item;
     ApiException? error;
     string? action, note;
-    bool busy;
+    bool busy, labels;
 
     protected override async Task OnParametersSetAsync() => await Load();
 

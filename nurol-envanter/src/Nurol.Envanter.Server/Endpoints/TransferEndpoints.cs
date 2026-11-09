@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Nurol.Envanter.Server.Data;
 using Nurol.Envanter.Server.Infrastructure;
+using Nurol.Envanter.Server.Services;
 using Nurol.Envanter.Shared;
 
 namespace Nurol.Envanter.Server.Endpoints;
@@ -78,7 +79,7 @@ public static class TransferEndpoints
             return Results.Ok(await Detail(db, a, t.Id));
         });
 
-        api.MapPost("/transfers/{id:guid}/send", async (Guid id, HttpContext ctx, AppDbContext db) =>
+        api.MapPost("/transfers/{id:guid}/send", async (Guid id, HttpContext ctx, AppDbContext db, Notifier notifier) =>
         {
             var a = await ctx.Access();
             await using var tx = await db.Database.BeginTransactionAsync();
@@ -115,6 +116,9 @@ public static class TransferEndpoints
             }
             t.Status = TransferStatus.Sent; t.SentAt = now; t.SentBy = a.UserName;
             Audit.Add(db, a, "Gönderme", "Transfer", t.Id, t.No);
+            // Bildirim, gönderimle aynı transaction'da outbox'a yazılır.
+            var srcName = await db.Warehouses.Where(w => w.Id == t.SourceWarehouseId).Select(w => w.Name).FirstAsync();
+            await notifier.TransferSentAsync(t, srcName, tgtName, items.Count, lines.Count(l => l.StockItemId != null));
             await db.SaveChangesAsync();
             await tx.CommitAsync();
             return Results.Ok(await Detail(db, a, id));

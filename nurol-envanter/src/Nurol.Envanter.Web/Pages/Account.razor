@@ -1,0 +1,57 @@
+@page "/hesabim"
+@inject Api Api
+@inject Toasts Toasts
+
+<PageTitle>Hesabım · Nurol Envanter</PageTitle>
+<div class="head"><div class="t"><h1>Hesabım</h1><p>E-posta adresiniz ve bildirim tercihiniz@(me?.AccountType == "Local" ? ", parolanız" : "").</p></div></div>
+
+@if (me is null) { <div class="loading">Yükleniyor…</div> }
+else
+{
+    <form class="card" @onsubmit="Save" style="max-width:720px">
+        <div class="cb form two">
+            <div class="fld"><span>Kullanıcı adı</span><span class="mono" style="font-weight:400">@me.UserName</span></div>
+            <div class="fld"><span>Hesap türü</span><span style="font-weight:400">@(me.AccountType == "Directory" ? "Kurum hesabı (AD)" : "Yerel hesap")</span></div>
+            <label class="fld full @(error?.For("email") is not null ? "err" : "")" for="acc-mail">E-posta
+                <input id="acc-mail" type="email" @bind="email" />
+                <span class="help">Bildirimler bu adrese gönderilir.</span>
+            </label>
+            <label class="check full"><input type="checkbox" @bind="notify" /> E-posta bildirimleri: teslim almam gereken transferler ve günlük özet (eksik imzalı evrak, kritik stok, ayrılan personel)</label>
+            @if (me.AccountType == "Local")
+            {
+                <div class="group-title full" style="margin-bottom:0">Parola değiştir</div>
+                <label class="fld @(error?.For("current") is not null ? "err" : "")" for="acc-cur">Mevcut parola<input id="acc-cur" type="password" @bind="current" autocomplete="current-password" /></label>
+                <label class="fld @(error?.For("new") is not null ? "err" : "")" for="acc-new">Yeni parola<input id="acc-new" type="password" @bind="newPass" autocomplete="new-password" /><span class="help">En az 10 karakter; büyük harf, küçük harf ve rakam.</span></label>
+            }
+            else { <p class="note full" style="margin:0">Parolanız Active Directory'de yönetilir.</p> }
+            <div class="full"><ErrorNote Error="error" ShowList="false" /></div>
+        </div>
+        <div class="toolbar foot" style="justify-content:flex-end"><button class="btn pri" type="submit" disabled="@busy">Kaydet</button></div>
+    </form>
+}
+
+@code {
+    MyAccountDto? me;
+    string? email, current, newPass;
+    bool notify, busy;
+    ApiException? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        me = await Api.Get<MyAccountDto>("api/account");
+        email = me.Email; notify = me.NotifyByEmail;
+    }
+
+    async Task Save()
+    {
+        busy = true; error = null;
+        try
+        {
+            await Api.Put("api/account", new MyAccountSave(email, notify, current, string.IsNullOrEmpty(newPass) ? null : newPass));
+            current = null; newPass = null;
+            Toasts.Show("Ayarlar kaydedildi");
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

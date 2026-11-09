@@ -1,14 +1,136 @@
 @page "/raporlar"
+@using System.Text.Json
+@inject Api Api
+@inject NavigationManager Nav
 
 <PageTitle>Raporlar · Nurol Envanter</PageTitle>
-<div class="head"><div class="t"><h1>Raporlar</h1><p>Rapor ekranları 3. aşamada gelecek. Bugün kullanılabilen hazır listeler aşağıda.</p></div></div>
+<div class="head"><div class="t"><h1>Raporlar</h1><p>Yetkili olduğunuz şirket ve depolardaki kayıtlarla hazırlanır. Her rapor Excel olarak indirilebilir.</p></div></div>
 
-<div class="tree">
-    <section class="card wh"><h2>Envanter dökümü</h2><p class="muted" style="margin:0">Filtrelenmiş envanter listesi, özel alanlarıyla birlikte CSV olarak (Excel'de açılır).</p><a class="btn sm" style="align-self:flex-start" href="envanter">Envantere git</a></section>
-    <section class="card wh"><h2>Eksik imzalı evrak</h2><p class="muted" style="margin:0">İmzalı kopyası yüklenmemiş zimmet ve iade tutanakları.</p><a class="btn sm" style="align-self:flex-start" href="zimmetler?eksik=1">Listeyi aç</a></section>
-    <section class="card wh"><h2>Bakımdaki cihazlar</h2><p class="muted" style="margin:0">Serviste veya onarımda olan cihazlar.</p><a class="btn sm" style="align-self:flex-start" href="envanter?durum=InMaintenance">Listeyi aç</a></section>
-    @foreach (var r in new[] { ("Personel bazlı zimmet", "Kimde hangi cihaz var, ne zamandan beri"), ("Sarf tüketimi", "Birim ve proje bazında malzeme çıkışları"), ("Envanter değeri", "Maliyet girilmiş kayıtlar üzerinden, depo bazında"), ("Hareket dökümü", "Tarih aralığına göre tüm hareketler") })
-    {
-        <section class="card wh"><h2>@r.Item1</h2><p class="muted" style="margin:0">@r.Item2</p><span class="tag" style="align-self:flex-start">3. aşama</span></section>
-    }
+<div class="grid g-side">
+    <section class="card">
+        <div class="ch"><h2>Rapor seçin</h2></div>
+        <div class="cat-list">
+            @foreach (var r in catalog)
+            {
+                <button class="@(r.Key == key ? "on" : "")" @onclick="() => Select(r.Key)"><span>@r.Title</span></button>
+            }
+        </div>
+    </section>
+
+    <div class="stack">
+        @if (Info is { } info)
+        {
+            <section class="card">
+                <div class="ch">
+                    <h2>@info.Title</h2>
+                    <a class="btn pri" href="@($"api/reports/{key}?{Query}&format=xlsx")" download>Excel indir</a>
+                </div>
+                <div class="cb stack">
+                    <p class="muted" style="margin:0">@info.Description</p>
+                    <div class="row">
+                        @if (info.DateRange)
+                        {
+                            <label class="fld" for="r-from" style="width:170px">Başlangıç<input id="r-from" type="date" @bind="from" @bind:after="Load" /></label>
+                            <label class="fld" for="r-to" style="width:170px">Bitiş<input id="r-to" type="date" @bind="to" @bind:after="Load" /></label>
+                        }
+                        @if (info.GroupBy)
+                        {
+                            <label class="fld" for="r-g" style="width:170px">Gruplama
+                                <select id="r-g" @bind="groupBy" @bind:after="Load">@foreach (var g in info.GroupOptions) { <option value="@g">@g</option> }</select>
+                            </label>
+                        }
+                        @if (key is "zimmet" or "eksik-evrak" or "sarf" or "hareket")
+                        {
+                            <label class="fld" for="r-w" style="width:220px">Depo
+                                <select id="r-w" value="@warehouseId" @onchange="e => { warehouseId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; return Load(); }">
+                                    <option value="">Tüm depolar</option>
+                                    @foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }
+                                </select>
+                            </label>
+                        }
+                    </div>
+                    @if (table is not null && table.Summary.Count > 0)
+                    {
+                        <div class="stat-line">@foreach (var s in table.Summary) { <span>@s.Label <b>@s.Value</b></span> }</div>
+                    }
+                    <ErrorNote Error="error" />
+                </div>
+                <div class="tw">
+                    <table>
+                        <thead><tr>@foreach (var c in table?.Columns ?? []) { <th class="@(IsNum(c) ? "right" : "")">@c.Label</th> }</tr></thead>
+                        <tbody>
+                            @if (loading) { <tr><td colspan="20" class="empty">Hazırlanıyor…</td></tr> }
+                            else if (table is not null && table.Rows.Count == 0) { <tr><td colspan="@table.Columns.Count" class="empty">Bu rapor için kayıt yok.</td></tr> }
+                            else if (table is not null)
+                            {
+                                @foreach (var row in table.Rows.Take(500))
+                                {
+                                    <tr>@for (var i = 0; i < table.Columns.Count; i++) { var c = table.Columns[i]; <td class="@(IsNum(c) ? "num right" : "")">@Show(c, i < row.Length ? row[i] : null)</td> }</tr>
+                                }
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (table is not null && table.Rows.Count > 500) { <div class="toolbar foot">İlk 500 satır gösteriliyor; tamamı için Excel indirin (@table.Rows.Count satır).</div> }
+            </section>
+        }
+    </div>
 </div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "r")] public string? R { get; set; }
+    List<ReportInfo> catalog = [];
+    List<WarehouseDto> warehouses = [];
+    ReportTable? table;
+    ApiException? error;
+    string? key, groupBy;
+    DateOnly? from = DateOnly.FromDateTime(DateTime.Today.AddDays(-30)), to = DateOnly.FromDateTime(DateTime.Today);
+    Guid? warehouseId;
+    bool loading;
+
+    ReportInfo? Info => catalog.FirstOrDefault(c => c.Key == key);
+    string Query => string.Join("&", new[]
+    {
+        Info?.DateRange == true && from is not null ? $"from={from:yyyy-MM-dd}" : null,
+        Info?.DateRange == true && to is not null ? $"to={to:yyyy-MM-dd}" : null,
+        Info?.GroupBy == true && groupBy is not null ? $"groupBy={Uri.EscapeDataString(groupBy)}" : null,
+        warehouseId is not null ? $"warehouseId={warehouseId}" : null
+    }.Where(x => x is not null));
+
+    protected override async Task OnInitializedAsync()
+    {
+        catalog = await Api.Get<List<ReportInfo>>("api/reports");
+        warehouses = await Api.Get<List<WarehouseDto>>("api/warehouses");
+        await Select(catalog.Any(c => c.Key == R) ? R! : catalog[0].Key);
+    }
+
+    async Task Select(string k)
+    {
+        key = k;
+        groupBy = Info?.GroupOptions.FirstOrDefault();
+        await Load();
+    }
+
+    async Task Load()
+    {
+        loading = true; error = null;
+        try { table = await Api.Get<ReportTable>($"api/reports/{key}?{Query}"); }
+        catch (ApiException ex) { error = ex; table = null; }
+        finally { loading = false; }
+    }
+
+    static bool IsNum(ReportColumn c) => c.Type is "number" or "money";
+
+    static string Show(ReportColumn c, object? v)
+    {
+        if (v is not JsonElement e || e.ValueKind == JsonValueKind.Null) return "—";
+        return c.Type switch
+        {
+            "date" when e.TryGetDateTimeOffset(out var d) => Fmt.Date(d),
+            "datetime" when e.TryGetDateTimeOffset(out var d) => Fmt.DateTime(d),
+            "money" when e.ValueKind == JsonValueKind.Number => Fmt.Money(e.GetDecimal()),
+            "number" when e.ValueKind == JsonValueKind.Number => Fmt.Qty(e.GetDecimal()),
+            _ => e.ValueKind == JsonValueKind.String ? e.GetString() ?? "—" : e.ToString()
+        };
+    }
+}

@@ -1,0 +1,139 @@
+@page "/toplu-ekleme"
+@inject Api Api
+@inject Session Session
+@inject Toasts Toasts
+
+<PageTitle>Excel ile toplu ekleme · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Excel ile toplu ekleme</h1><p>Şablonu indirip doldurun, yükleyin. Dosya önce kontrol edilir; hata varsa hiçbir satır kaydedilmez.</p></div>
+</div>
+@if (!Session.CanWrite) { <div class="note">Toplu ekleme için yazma yetkisi gerekir.</div> }
+else
+{
+    <div class="seg" role="tablist" style="align-self:flex-start">
+        <button role="tab" aria-selected="@(kind == "items")" class="@(kind == "items" ? "on" : "")" @onclick='() => Switch("items")'>Envanter</button>
+        <button role="tab" aria-selected="@(kind == "employees")" class="@(kind == "employees" ? "on" : "")" @onclick='() => Switch("employees")'>Personel</button>
+    </div>
+
+    <section class="card">
+        <div class="ch"><h2>1. Şablon</h2></div>
+        <div class="cb row">
+            @if (kind == "items")
+            {
+                <label class="fld" for="imp-cat" style="width:280px">Kategori
+                    <select id="imp-cat" value="@categoryId" @onchange="e => { categoryId = G(e.Value); Reset(); }">
+                        <option value="">Seçin</option>
+                        @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
+                    </select>
+                </label>
+                @if (categoryId is not null) { <a class="btn" style="align-self:flex-end" href="api/import/items/template?categoryId=@categoryId" download>Şablonu indir (.xlsx)</a> }
+                <p class="muted" style="margin:0;flex-basis:100%;font-size:12.5px">Şablon kategorinin özel alanlarını, açılır model ve depo listelerini içerir. Etiketler kayıtta otomatik verilir.</p>
+            }
+            else
+            {
+                <label class="fld" for="imp-co" style="width:280px">Şirket
+                    <select id="imp-co" value="@companyId" @onchange="e => { companyId = G(e.Value); Reset(); }">
+                        <option value="">Seçin</option>
+                        @foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }
+                    </select>
+                </label>
+                <a class="btn" style="align-self:flex-end" href="api/import/employees/template" download>Şablonu indir (.xlsx)</a>
+                <p class="muted" style="margin:0;flex-basis:100%;font-size:12.5px">AD kullanılıyorsa personel AD eşitlemesiyle gelir; bu sayfa AD dışındaki personel içindir.</p>
+            }
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="ch"><h2>2. Dosyayı yükle ve kontrol et</h2></div>
+        <div class="cb stack">
+            <label class="drop" for="imp-file">
+                <b>@(fileName ?? "Doldurulmuş .xlsx dosyasını seçin")</b><br /><span style="font-size:12px">En fazla 2000 satır · 10 MB</span>
+                <InputFile id="imp-file" OnChange="Pick" accept=".xlsx" disabled="@(busy || Target is null)" />
+            </label>
+            @if (Target is null) { <p class="muted" style="margin:0">Önce @(kind == "items" ? "kategoriyi" : "şirketi") seçin.</p> }
+            <ErrorNote Error="error" />
+            @if (result is not null)
+            {
+                <div class="stat-line"><span>Satır <b>@result.Total</b></span><span>Geçerli <b>@result.Valid</b></span><span>Hatalı satır <b>@result.Errors.Select(x => x.Row).Distinct().Count()</b></span></div>
+                @if (result.Committed)
+                {
+                    <div class="note">@result.Created.Count kayıt eklendi@(kind == "items" ? ": " + string.Join(", ", result.Created.Take(10)) + (result.Created.Count > 10 ? "…" : "") : ".")</div>
+                }
+                else if (result.Errors.Count > 0)
+                {
+                    <div class="note error"><b>Dosyada hata var; hiçbir satır kaydedilmedi.</b> Aşağıdaki hataları Excel'de düzeltip dosyayı yeniden yükleyin.</div>
+                    <div class="tw" style="max-height:360px;overflow-y:auto">
+                        <table><thead><tr><th>Satır</th><th>Sütun</th><th>Hata</th></tr></thead>
+                            <tbody>@foreach (var x in result.Errors) { <tr><td class="num">@x.Row</td><td>@(x.Column ?? "—")</td><td>@x.Message</td></tr> }</tbody>
+                        </table>
+                    </div>
+                }
+                else if (result.Valid == 0) { <div class="note warn">Dosyada eklenecek satır bulunamadı.</div> }
+                else
+                {
+                    <div class="note"><b>@result.Valid satır kaydedilmeye hazır.</b> İlk satırların önizlemesi:</div>
+                    <div class="tw">
+                        <table><thead><tr>@foreach (var h in result.PreviewHeaders) { <th>@h</th> }</tr></thead>
+                            <tbody>@foreach (var r in result.Preview) { <tr>@foreach (var c in r) { <td>@(c ?? "—")</td> }</tr> }</tbody>
+                        </table>
+                    </div>
+                    <div class="row" style="justify-content:flex-end">
+                        <button class="btn" @onclick="Reset">Vazgeç</button>
+                        <button class="btn pri" disabled="@busy" @onclick="() => Send(true)">@(busy ? "Kaydediliyor…" : $"{result.Valid} kaydı ekle")</button>
+                    </div>
+                }
+            }
+        </div>
+    </section>
+}
+
+@code {
+    string kind = "items";
+    List<CategoryDto> categories = [];
+    List<CompanyDto> companies = [];
+    Guid? categoryId, companyId;
+    byte[]? file;
+    string? fileName;
+    ImportResult? result;
+    ApiException? error;
+    bool busy;
+
+    Guid? Target => kind == "items" ? categoryId : companyId;
+    static Guid? G(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        categories = await Api.Get<List<CategoryDto>>("api/categories");
+        companies = await Api.Get<List<CompanyDto>>("api/companies");
+        if (companies.Count == 1) companyId = companies[0].Id;
+    }
+
+    void Switch(string k) { kind = k; Reset(); }
+    void Reset() { file = null; fileName = null; result = null; error = null; }
+
+    async Task Pick(InputFileChangeEventArgs e)
+    {
+        Reset();
+        if (e.File.Size > 10 * 1024 * 1024) { error = new ApiException("Dosya 10 MB sınırını aşıyor."); return; }
+        using var ms = new MemoryStream();
+        await e.File.OpenReadStream(10 * 1024 * 1024).CopyToAsync(ms);
+        file = ms.ToArray(); fileName = e.File.Name;
+        await Send(false);
+    }
+
+    async Task Send(bool commit)
+    {
+        if (file is null || Target is null) return;
+        busy = true; error = null;
+        try
+        {
+            using var content = new MultipartFormDataContent();
+            content.Add(new ByteArrayContent(file), "file", fileName ?? "dosya.xlsx");
+            var url = kind == "items" ? $"api/import/items?categoryId={categoryId}&commit={commit.ToString().ToLower()}" : $"api/import/employees?companyId={companyId}&commit={commit.ToString().ToLower()}";
+            result = await Api.Upload<ImportResult>(url, content);
+            if (result.Committed) { Toasts.Show($"{result.Created.Count} kayıt eklendi"); file = null; }
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

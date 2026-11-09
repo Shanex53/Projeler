@@ -102,7 +102,7 @@ public static class PeopleEndpoints
                 if (emp.DirectoryId is null || emp.DirectoryUserName is null) throw AppException.Invalid("Seçilen personel AD'den eşitlenmemiş.");
                 if (!emp.IsActive) throw AppException.Conflict("Pasif personele hesap açılamaz.");
                 if (await db.Users.AnyAsync(u => u.DirectoryId == emp.DirectoryId)) throw AppException.Conflict("Bu personelin zaten bir uygulama hesabı var.");
-                user = new AppUser { UserName = emp.DirectoryUserName, DisplayName = emp.FullName, AccountType = "Directory", DirectoryId = emp.DirectoryId,
+                user = new AppUser { UserName = emp.DirectoryUserName, DisplayName = emp.FullName, AccountType = "Directory", DirectoryId = emp.DirectoryId, Email = emp.Email,
                     EmployeeId = emp.Id, IsActive = true, LockoutEnabled = true };
                 res = await um.CreateAsync(user);
             }

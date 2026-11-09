@@ -64,6 +64,11 @@ var directory = cfg.GetSection("Directory").Get<DirectoryOptions>() ?? new Direc
 builder.Services.AddSingleton(directory);
 builder.Services.AddSingleton<IDirectoryClient, LdapDirectoryClient>();
 builder.Services.AddScoped<Nurol.Envanter.Server.Services.DirectorySync>();
+var smtp = cfg.GetSection("Smtp").Get<Nurol.Envanter.Server.Services.SmtpOptions>() ?? new Nurol.Envanter.Server.Services.SmtpOptions();
+builder.Services.AddSingleton(smtp);
+builder.Services.AddScoped<Nurol.Envanter.Server.Services.Notifier>();
+if (!args.Contains("migrate") && !args.Contains("ad-sync") && !args.Contains("bildirim-ozet"))
+    builder.Services.AddHostedService<Nurol.Envanter.Server.Services.MailSender>();
 
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
@@ -91,6 +96,15 @@ if (args.Contains("ad-sync"))
     await using var syncScope = app.Services.CreateAsyncScope();
     var run = await syncScope.ServiceProvider.GetRequiredService<Nurol.Envanter.Server.Services.DirectorySync>().RunAsync(false, "Zamanlanmış", "ad-eşitleme");
     Environment.ExitCode = run.Status == "Başarılı" ? 0 : 1;
+    return;
+}
+// "bildirim-ozet" argümanı: CronJob günlük özet e-postalarını outbox'a yazar ve çıkar; gönderimi uygulama pod'ları yapar.
+if (args.Contains("bildirim-ozet"))
+{
+    await using var digestScope = app.Services.CreateAsyncScope();
+    var n = await digestScope.ServiceProvider.GetRequiredService<Nurol.Envanter.Server.Services.Notifier>()
+        .DailyDigestAsync(DateOnly.FromDateTime(TimeZones.ToLocal(DateTimeOffset.UtcNow)));
+    app.Logger.LogInformation("Günlük özet: {Count} e-posta sıraya alındı", n);
     return;
 }
 if (cfg.GetValue("Database:MigrateOnStartup", app.Environment.IsDevelopment()))
@@ -144,6 +158,10 @@ DashboardEndpoints.Map(api);
 TransferEndpoints.Map(api);
 ViewEndpoints.Map(api);
 DirectoryEndpoints.Map(api);
+ReportEndpoints.Map(api);
+ImportEndpoints.Map(api);
+LabelEndpoints.Map(api);
+NotificationEndpoints.Map(api);
 api.MapFallback(() => Results.NotFound(new Nurol.Envanter.Shared.ApiError("İstenen adres bulunamadı.")));
 
 app.MapFallbackToFile("index.html");

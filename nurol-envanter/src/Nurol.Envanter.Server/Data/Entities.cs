@@ -13,6 +13,8 @@ public class AppUser : IdentityUser
     /// <summary>AD hesabı için kalıcı dizin kimliği (alan adı + objectGUID).</summary>
     public string? DirectoryId { get; set; }
     public Guid? EmployeeId { get; set; }
+    /// <summary>E-posta bildirimleri (Email alanına gönderilir).</summary>
+    public bool NotifyByEmail { get; set; } = true;
     public List<UserScope> Scopes { get; set; } = [];
 }
 
@@ -372,4 +374,25 @@ public class DirectorySyncRun
     public int Unmatched { get; set; }
     public string? Message { get; set; }
     public string Changes { get; set; } = "[]";
+}
+
+/// <summary>
+/// Gönderilecek e-postalar (outbox). Bildirim, onu doğuran işlemle aynı transaction'da yazılır; gönderim ayrı
+/// arka plan işinde yapılır. DedupKey aynı bildirimin iki kez üretilmesini engeller. Çoklu pod'da satırlar
+/// FOR UPDATE SKIP LOCKED ile paylaşılır.
+/// </summary>
+public class OutboxMail
+{
+    public Guid Id { get; set; }
+    public string Kind { get; set; } = "";
+    public string ToEmail { get; set; } = "";
+    public string ToName { get; set; } = "";
+    public string Subject { get; set; } = "";
+    public string BodyHtml { get; set; } = "";
+    public string? DedupKey { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public DateTimeOffset SendAfter { get; set; }
+    public DateTimeOffset? SentAt { get; set; }
+    public int Attempts { get; set; }
+    public string? LastError { get; set; }
 }

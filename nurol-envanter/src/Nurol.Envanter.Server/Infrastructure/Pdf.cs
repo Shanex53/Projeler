@@ -31,6 +31,8 @@ public static class AssignmentPdf
         }
     }
 
+    public static void EnsureFontsPublic() => EnsureFonts();
+
     public static byte[] Render(AssignmentSnapshot s)
     {
         EnsureFonts();

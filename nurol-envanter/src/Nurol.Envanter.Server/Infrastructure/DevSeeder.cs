@@ -185,7 +185,7 @@ public static class DevSeeder
         async Task U(string user, string name, string role, params (Guid company, Guid? wh)[] scopes)
         {
             if (await users.FindByNameAsync(user) is not null) return;
-            var u = new AppUser { UserName = user, DisplayName = name, AccountType = "Local", LockoutEnabled = true };
+            var u = new AppUser { UserName = user, DisplayName = name, AccountType = "Local", LockoutEnabled = true, Email = $"{user}@nurol.com.tr" };
             var r = await users.CreateAsync(u, DevPassword);
             if (!r.Succeeded) throw new InvalidOperationException(string.Join(", ", r.Errors.Select(e => e.Code)));
             await users.AddToRoleAsync(u, role);

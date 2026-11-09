@@ -35,6 +35,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<SavedView> SavedViews => Set<SavedView>();
     public DbSet<DirectoryCompanyRule> DirectoryRules => Set<DirectoryCompanyRule>();
     public DbSet<DirectorySyncRun> DirectorySyncRuns => Set<DirectorySyncRun>();
+    public DbSet<OutboxMail> OutboxMails => Set<OutboxMail>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -198,6 +199,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
             e.HasIndex(x => new { x.UserId, x.Page, x.Name }).IsUnique();
             e.Property(x => x.State).HasColumnType("jsonb");
             e.Property(x => x.Name).HasMaxLength(80);
+        });
+        b.Entity<OutboxMail>(e =>
+        {
+            e.HasIndex(x => x.DedupKey).IsUnique().HasFilter("dedup_key IS NOT NULL");
+            e.HasIndex(x => new { x.SentAt, x.SendAfter });
         });
         b.Entity<DirectoryCompanyRule>().HasOne(x => x.Company).WithMany().OnDelete(DeleteBehavior.Restrict);
         b.Entity<DirectorySyncRun>(e =>
