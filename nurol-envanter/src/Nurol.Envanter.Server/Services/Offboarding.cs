@@ -72,13 +72,18 @@ public class OffboardingService(AppDbContext db, OffboardingOptions o, Notifier 
         var end = until ?? DateTimeOffset.MaxValue;
         var items = await db.Assignments
             .Where(x => x.EmployeeId == c.EmployeeId && x.Kind == AssignmentKind.Return && x.At >= c.OpenedAt && x.At <= end)
-            .SelectMany(x => x.Lines.Select(l => new { x.No, x.At, l.Item!.Tag, Brand = l.Item.AssetModel!.Manufacturer!.Name, Model = l.Item.AssetModel.Name, l.Item.Serial, l.Condition }))
+            .SelectMany(x => x.Lines.Select(l => new { x.No, x.At, l.ItemId, l.Item!.Tag, Brand = l.Item.AssetModel!.Manufacturer!.Name, Model = l.Item.AssetModel.Name, l.Item.Serial, l.Condition }))
             .ToListAsync(ct);
         var lines = await db.PhoneLineEvents.Where(e => e.EmployeeId == c.EmployeeId && e.Type == "Geri alındı" && e.At >= c.OpenedAt && e.At <= end)
             .Join(db.PhoneLines, e => e.LineId, l => l.Id, (e, l) => new { e.At, l.Number, l.Operator, l.Iccid })
             .ToListAsync(ct);
+        // Cihazla birlikte dönen (cihaza takılı) hatlar cihaz satırında belirtilir.
+        var itemIds = items.Select(i => i.ItemId).ToList();
+        var sims = await db.PhoneLines.Where(l => l.ItemId != null && itemIds.Contains(l.ItemId.Value) && l.Status != LineStatus.Cancelled)
+            .Select(l => new { ItemId = l.ItemId!.Value, l.Number }).ToListAsync(ct);
+        string Sims(Guid id) => string.Concat(sims.Where(x => x.ItemId == id).Select(x => $" · hat {LineLabels.Number(x.Number)}"));
         return items.Select(i => new OffboardingReturned("Cihaz", i.No,
-                    $"{i.Tag} · {i.Brand} {i.Model}{(i.Serial is null ? "" : $" · SN {i.Serial}")}{(i.Condition is null ? "" : $" · {i.Condition}")}", i.At))
+                    $"{i.Tag} · {i.Brand} {i.Model}{(i.Serial is null ? "" : $" · SN {i.Serial}")}{Sims(i.ItemId)}{(i.Condition is null ? "" : $" · {i.Condition}")}", i.At))
             .Concat(lines.Select(l => new OffboardingReturned("Hat", LineLabels.Number(l.Number), $"{l.Operator}{(l.Iccid is null ? "" : $" · SIM {l.Iccid}")}", l.At)))
             .OrderBy(r => r.At).ToList();
     }

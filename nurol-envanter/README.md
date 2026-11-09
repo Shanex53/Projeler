@@ -36,6 +36,11 @@ Bu klasör sıfırdan başlatılan yeni projedir; depodaki diğer dosyalarla ba�
 - Toner değişimi algılama ve tek tıkla stoktan düşme, toner ihtiyacı tablosu, günlük baskı ve yazıcı sayaçları raporu
 - Kyocera ve HP yazıcıların bildirdiği parça numarasından (TK-1170, CF259A…) stoktaki tonerin otomatik önerilmesi ve toplu atanması
 
+## Hatlar ve ilişik kesme
+
+- Telefon hattı ve SIM yönetimi: numara, operatör, tarife, ICCID, masraf yeri, sözleşme bitişi; cihaza takma ya da personele doğrudan verme; Excel ile toplu ekleme ve maliyet raporu. Cihaza takılı hatlar zimmet tutanağına yazılır.
+- İlişik kesme: AD'de devre dışı kalan veya pasife alınan personelde cihaz/hat varsa iade süreci kendiliğinden açılır; cihazlar, hatlar ve görevler tamamlanmadan ilişik kesme belgesi (PDF) üretilmez.
+
 Ayrıntılar: [tasarım](docs/tasarim.md), [Aşama 1 planı](docs/plan-asama-1.md), [Aşama 2 notları](docs/asama-2.md), [Aşama 3 notları](docs/asama-3.md).
 
 ## Hızlı başlangıç

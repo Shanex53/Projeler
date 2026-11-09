@@ -267,7 +267,29 @@ Yazıcılar envanterden bağımsızdır; **Yazıcılar → Yazıcı ekle** ile I
 - Uygulama yalnızca `printers.allowedNetworks` içindeki adreslere bağlanır (varsayılan özel ağlar 10/8, 172.16/12, 192.168/16). Kurumun yazıcı VLAN'ıyla daraltılması önerilir; liste verildiğinde yalnızca o ağlar geçerlidir.
 - Yazıcılarda salt okunur bir SNMP topluluk adı kullanın. Topluluk adı veritabanında saklanır, arayüze geri gönderilmez. SNMP v3 bu sürümde desteklenmez.
 
-## 10. Yedekleme ve geri yükleme
+## 10. Telefon hatları ve ilişik kesme
+
+**Hatlar** sayfasında her hat için numara, operatör, hat tipi, tarife, aylık ücret, SIM seri numarası (ICCID), masraf yeri ve sözleşme bitişi tutulur. Numara hangi biçimde yazılırsa yazılsın (`+90 532…`, `532…`, boşluklu) `0532 418 27 60` biçimine çevrilir; numara ve ICCID tekildir.
+
+- **Cihaza takma:** telefon/modem gibi cihazlara en fazla iki hat takılır. Cihaz kime zimmetliyse hat da onda görünür ve zimmet tutanağının “Ek bilgiler” sütununa `Hat: 0532 …` olarak yazılır. Cihaz iade alınınca hat cihazla birlikte döner.
+- **Personele doğrudan verme:** kişisel cihazdaki data SIM gibi cihazsız hatlar doğrudan personele verilir ve geri alınır. Hat yalnızca aynı şirketin aktif personeline verilir. İptal edilen hat kişiden düşülür.
+- Toplu ekleme: **Excel ile ekleme → Telefon hattı**. Maliyet: **Raporlar → Telefon hatları ve maliyet** (hat listesi ya da operatör, birim, masraf yeri toplamları; Excel'e aktarılabilir). Sözleşmesi 30 gün içinde bitecek hatlar listede işaretlenir ve günlük özette yer alır.
+
+**İlişik kesme** (işten ayrılan personel):
+
+- AD eşitlemesinde devre dışı kalan ya da elle pasife alınan personelin üzerinde cihaz veya hat varsa süreç **kendiliğinden açılır** (`ILS-2026-000001`). Personel kartından veya İlişik kesme sayfasından elle de başlatılabilir. Bir personel için aynı anda tek açık süreç olur. Açılışta şirketteki depo sorumlularına, şirket yöneticilerine ve sistem yöneticilerine e-posta gider.
+- Kontrol listesi: üzerindeki cihazlar (iade ekranına bağlantıyla), hatlar (doğrudan verilenler buradan geri alınır) ve elle eklenen görevler (giriş kartı, anahtar, araç vb.).
+- Cihazların tümü iade alınmadan, doğrudan verilen hatlar geri alınmadan ve görevler işaretlenmeden süreç **kapatılamaz**. Kullanıcının kapsamı dışındaki depolarda kalan cihazlar da sayılır; bu cihazları o depoların sorumluları iade alır.
+- Kapatılınca kapanış anındaki verilerle **ilişik kesme belgesi** (A4 PDF) üretilir, özel depoya yazılır ve SHA-256 özeti saklanır; indirirken özet kontrol edilir. Kapanan süreç değiştirilemez.
+- Her yeni sürece otomatik eklenecek görevler ortam değişkenleriyle tanımlanabilir (Helm `extraEnv`):
+
+```yaml
+extraEnv:
+  Offboarding__DefaultTasks__0: "Giriş kartı teslim alındı"
+  Offboarding__DefaultTasks__1: "E-posta hesabı yönlendirildi"
+```
+
+## 11. Yedekleme ve geri yükleme
 
 Veritabanı ve nesne deposu **birlikte** yedeklenmelidir. Tutanak kayıtları veritabanında, dosyaları nesne deposundadır.
 
@@ -282,7 +304,7 @@ Evrak dosyaları yüklendikten sonra değiştirilmez; her sürüm ayrı bir nesn
 
 Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumun yedekleme altyapısına göre belirlenmelidir.
 
-## 11. Güvenlik notları
+## 12. Güvenlik notları
 
 - Oturum cookie'si HttpOnly, SameSite=Strict ve üretimde Secure'dür. Uygulama HTTPS arkasında (ingress TLS) çalışmalıdır.
 - Durum değiştiren tüm API isteklerinde özel bir başlık zorunludur (CSRF koruması); uygulama CORS açmaz.
@@ -291,7 +313,7 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 - Kullanıcı devre dışı bırakıldığında, rolü veya parolası değiştiğinde açık oturumları sunucudan hemen iptal edilir.
 - Yüklenen dosyaların türü uzantıdan değil içerikten belirlenir (PDF/JPEG/PNG); en fazla 20 MB.
 
-## 12. Sorun giderme
+## 13. Sorun giderme
 
 | Belirti | Olası neden |
 |---|---|
@@ -312,11 +334,12 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 | Toner seviyesi “Var” veya “Bilinmiyor” | Yazıcı yüzde bildirmiyor; bazı modeller (ör. toner yeniden doldurulmuşsa) yalnızca “var/yok” bildirir. |
 | AD kullanıcısı giriş yapamıyor | `loginEnabled` kapalı, uygulamada hesap açılmamış, hesap AD'de devre dışı veya AD kimliği değişmiş (hesabı yeniden açın). |
 
-## 13. Doğrulama durumu
+## 14. Doğrulama durumu
 
 **Bu teslimde test edilenler:**
 
-- 51 otomatik test. Yazıcı izleme için: Kyocera (birimle bildirilen seviye, sonu NUL baytlı açıklama, atık toner kutusu) ve HP (“var” olarak bildirilen seviye) yanıt biçimleri, parça numarası çıkarma ve yalnızca tek aday varken öneri, önerilerin toplu uygulanması; gerçek UDP üzerinden yanıt veren bir SNMP ajanına karşı Printer-MIB okuması, yanlış topluluk ve izinli ağ dışı adresin reddi, azalan tonerde uyarı ve önerilen toner/stok metni, uyarı e-postasının bir kez gitmesi, aynı modele toner atama, değişim algılama ve stoktan düşme, ulaşılamayan yazıcıda son değerlerin korunması, sayaç raporu, depo kapsamı. Okuyucu ayrıca bağımsız bir SNMP simülatörüne (snmpsim) karşı denendi.
+- 56 otomatik test. Hat ve ilişik kesme için: numara/ICCID biçim düzeltme ve tekillik, şirket kapsamı, cihaza takılı hattın zimmetliye geçmesi ve tutanağa yazılması, cihaz başına iki hat sınırı, iptalde kişiden düşme, eski sürümle kaydetmede çakışma, Excel ile hat eklemede hepsi-ya-hiçbiri; personel pasife alınınca ve AD eşitlemesinde (önizlemede değil) sürecin açılması, üzerinde bir şey olmayan kişide açılmaması, tek açık süreç, iade/geri alma/görev tamamlanmadan kapatılamaması, belge üretimi ve bütünlük özeti, kapanmış sürecin değiştirilememesi, denetçinin yalnızca görmesi, kapsam dışı şirketin görünmemesi. Akış ayrıca tarayıcıda uçtan uca denendi.
+- Yazıcı izleme için: Kyocera (birimle bildirilen seviye, sonu NUL baytlı açıklama, atık toner kutusu) ve HP (“var” olarak bildirilen seviye) yanıt biçimleri, parça numarası çıkarma ve yalnızca tek aday varken öneri, önerilerin toplu uygulanması; gerçek UDP üzerinden yanıt veren bir SNMP ajanına karşı Printer-MIB okuması, yanlış topluluk ve izinli ağ dışı adresin reddi, azalan tonerde uyarı ve önerilen toner/stok metni, uyarı e-postasının bir kez gitmesi, aynı modele toner atama, değişim algılama ve stoktan düşme, ulaşılamayan yazıcıda son değerlerin korunması, sayaç raporu, depo kapsamı. Okuyucu ayrıca bağımsız bir SNMP simülatörüne (snmpsim) karşı denendi.
 - Aşama 3 için: raporların kapsama göre süzülmesi ve Excel çıktısı, değer raporu toplamı, Excel toplu eklemede hatalı dosyanın hiç kaydedilmemesi (geçersiz depo, dosya içi tekrar seri no ve IMEI, liste dışı seçenek, yetkisiz depo, tanınmayan sütun), IMEI'nin baştaki sıfırı ve sayı olarak girilmesi, personel içe aktarımında sicil kontrolü, etiket PDF'inin sayfa düzeni ve QR görselinin gerçekten gömülmesi, kod ile arama ve kapsam, transfer bildiriminin doğru alıcılara gitmesi, günlük özetin aynı gün tekrar üretilmemesi, gerçek SMTP sunucusuna (Mailpit) gönderim ve hata durumunda yeniden deneme, Hesabım ayarları.
 - Aşama 2 için: transfer akışı ve yetkileri (gönderme kaynak, teslim alma hedef depo yetkisi; transferdeki cihazın zimmetlenememesi; stok yetersizse gönderimin tamamen geri alınması; eşzamanlı gönderimde stokun tek kez düşmesi; şirketler arası transfer engeli), görünümlerin kişiye özel olması, AD eşitleme kuralları (yeniden adlandırmada mükerrer kayıt oluşmaması, başarısız veya şüpheli aramada toplu pasife alma yapılmaması, eşleşmeyen kişinin raporlanması) ve AD girişi (yerel parolaya düşmeme, dizine ulaşılamadığında reddetme, devre dışı hesabın oturumunun iptali, aynı kullanıcı adıyla yeni AD hesabının yetkiyi devralamaması).
 - LDAP istemcisi gerçek bir dizin sunucusuna (OpenLDAP) karşı test edildi: sayfalı arama, öznitelik eşlemesi, parola doğrulama, boş parolanın reddi, filtre enjeksiyonu. `ad-sync` komutu imaj içinde salt okunur dosya sistemiyle çalıştırıldı.
