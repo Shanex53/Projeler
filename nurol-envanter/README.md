@@ -50,6 +50,8 @@ docker compose -f deploy/docker-compose.yml up --build
 # http://localhost:8080 — kullanıcı: yonetici, parola: Gelistirme123 (yalnızca deneme ortamı)
 ```
 
+Kurum ağında derleme `NU1301 ... UntrustedRoot` hatası verirse önce `powershell -ExecutionPolicy Bypass -File .\sertifika-aktar.ps1` çalıştırın (kurum sertifikalarını derlemeye ekler).
+
 Geliştirme, Kubernetes kurulumu, yedekleme ve güvenlik notları için: **[Kurulum kılavuzu](docs/kurulum.md)**.
 
 ## Klasör yapısı

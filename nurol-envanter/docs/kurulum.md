@@ -317,6 +317,7 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 
 | Belirti | Olası neden |
 |---|---|
+| İmaj derlenirken `NU1301 ... UntrustedRoot` | Kurum ağı HTTPS trafiğini kendi sertifikasıyla denetliyor. Windows'ta `powershell -ExecutionPolicy Bypass -File .\sertifika-aktar.ps1` ile bilgisayarın güvendiği sertifikaları `sertifikalar/` klasörüne aktarın (veya kurum kök sertifikasını oraya `.crt` olarak koyun) ve yeniden derleyin. |
 | `/healthz/ready` → `"schema": false` | Migration Job çalışmadı veya başarısız. Job loglarına bakın. |
 | `/healthz/ready` → `"storage": false` | S3 adresi, kova adı veya erişim anahtarı hatalı; ya da kurum CA tanımlı değil. |
 | `/healthz/ready` → `"db": false` | Bağlantı cümlesi, ağ erişimi veya PostgreSQL TLS/CA ayarı. |

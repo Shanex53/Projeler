@@ -5,3 +5,6 @@ obj/
 .vs/
 TestResults/
 node_modules/
+
+# Kurum sertifikaları depoya eklenmez
+sertifikalar/*.crt

@@ -1,0 +1,9 @@
+Kurum ağı HTTPS trafiğini kendi sertifikasıyla denetliyorsa (SSL inspection) derleme
+"UntrustedRoot" / NU1301 hatası verir. Bu durumda kurumun kök sertifikalarını bu klasöre
+.crt (PEM, Base64) olarak koyun ve imajı yeniden derleyin.
+
+Windows'ta bilgisayarın güvendiği sertifikaları buraya aktarmak için nurol-envanter klasöründe:
+
+    powershell -ExecutionPolicy Bypass -File .\sertifika-aktar.ps1
+
+Bu klasördeki .crt dosyaları Git'e eklenmez.
