@@ -12,6 +12,8 @@ Kubernetes Secret ve Helm values dosyasıyla verilir.
 | PostgreSQL | Kurumsal PostgreSQL (14 ve üzeri; 17 ile test edildi). Chart veritabanı kurmaz. |
 | Nesne deposu | S3 uyumlu özel depo (kurumsal S3, MinIO vb.). İmzalı evraklar ve üretilen tutanaklar burada tutulur. |
 | Migration Job | Aynı imaj `migrate` argümanıyla çalışır; şemayı günceller ve ilk yöneticiyi oluşturur. |
+| AD eşitleme CronJob'u | Aynı imaj `ad-sync` argümanıyla çalışır (isteğe bağlı). |
+| Active Directory | LDAPS ile salt okunur servis hesabı. Personel eşitlemesi ve AD ile giriş ayrı ayrı açılır. |
 
 Redis veya başka bir ara katman gerekmez. Oturumlar, cookie şifreleme anahtarları ve giriş kilitleri PostgreSQL'de
 ortak tutulur; birden fazla pod çalışırken sticky session gerekmez.
@@ -80,7 +82,8 @@ iç paket deposu varsa derleme makinesine tanımlanmalıdır.
 1. PostgreSQL'de boş bir veritabanı ve bu veritabanında tablo oluşturma yetkisi olan bir kullanıcı.
 2. S3 uyumlu depoda özel (public olmayan) bir kova, örn. `nurol-envanter`, ve bu kovaya okuma/yazma yetkisi olan erişim anahtarı.
 3. Ingress için alan adı ve TLS sertifikası (Secret olarak).
-4. PostgreSQL veya S3 iç CA ile imzalı sertifika kullanıyorsa kurum CA sertifikası (PEM).
+4. PostgreSQL, S3 veya AD (LDAPS) iç CA ile imzalı sertifika kullanıyorsa kurum CA sertifikası (PEM).
+5. AD kullanılacaksa: salt okunur bir servis hesabı, personelin bulunduğu OU (arama kökü) ve kümeden etki alanı denetleyicisine 636 numaralı porta erişim.
 
 ### 5.2 Namespace, Secret ve CA
 
@@ -92,7 +95,8 @@ kubectl -n envanter create secret generic nurol-envanter-gizli \
   --from-file=ConnectionStrings__Default=./pg-baglanti.txt \
   --from-file=Storage__AccessKey=./s3-erisim.txt \
   --from-file=Storage__SecretKey=./s3-gizli.txt \
-  --from-file=Bootstrap__AdminPassword=./ilk-yonetici-parolasi.txt
+  --from-file=Bootstrap__AdminPassword=./ilk-yonetici-parolasi.txt \
+  --from-file=Directory__BindPassword=./ad-servis-parolasi.txt   # AD kullanılmayacaksa bu satırı çıkarın
 
 # İsteğe bağlı: kurum CA sertifikası
 kubectl -n envanter create configmap kurum-ca --from-file=ca.crt=./kurum-ca.pem
@@ -140,7 +144,7 @@ curl http://localhost:8080/healthz/ready
 - Evrak yüklemeleri için ingress gövde sınırı 25 MB (nginx ingress açıklaması; başka ingress denetleyicilerinde eşdeğeri ayarlanmalıdır).
 - Migration'lar PostgreSQL advisory lock ile korunur; aynı anda iki Job çalışsa da tek kez uygulanır.
 
-AD personel eşitleme CronJob'u 2. aşamada chart'a eklenecektir.
+- `directory.schedule.enabled` açıksa AD eşitleme CronJob'u (`concurrencyPolicy: Forbid`; ayrıca veritabanı kilidi).
 
 ### 5.5 Yükseltme ve geri alma
 
@@ -152,7 +156,53 @@ helm rollback nurol-envanter <revizyon> -n envanter
 Geri alma uygulama sürümünü döndürür ama şemayı geri almaz. Şema değişikliği içeren bir sürümden önce
 veritabanı yedeği alınmalıdır.
 
-## 6. Yedekleme ve geri yükleme
+## 6. Active Directory
+
+### 6.1 Ayarlar
+
+`values` dosyasındaki `directory` bölümü (örnek: `values-ornek.yaml`):
+
+| Değer | Açıklama |
+|---|---|
+| `syncEnabled` | Personel eşitlemesini açar (elle ve zamanlanmış). |
+| `loginEnabled` | AD hesaplarıyla girişi açar. Eşitlemeden bağımsızdır. |
+| `server`, `port`, `useSsl` | Etki alanı denetleyicisi. LDAPS (636) önerilir; iç CA için `corporateCa` açılmalıdır. |
+| `baseDn`, `filter` | Personelin arandığı OU ve filtre. Varsayılan filtre kullanıcı nesneleridir. |
+| `bindDn` | Salt okunur servis hesabının DN'i. Parolası Secret'ta (`Directory__BindPassword`). |
+| `domain` | Kalıcı kimliğin öneki. Personel `domain + objectGUID` ile tanınır; ad veya kullanıcı adı değişse de aynı kayıt kalır. |
+| `attributes.*` | AD öznitelik eşlemesi (sAMAccountName, displayName, mail, title, department, company, employeeID). |
+| `schedule.*` | Zamanlanmış eşitleme (varsayılan kapalı). |
+
+AD parolaları veritabanına yazılmaz ve yerel parolaya dönüştürülmez.
+
+### 6.2 İlk eşitleme
+
+1. Uygulamada **Yönetim → Active Directory** sekmesinde **Bağlantıyı test et**. Servis hesabı reddedilirse veya sunucuya ulaşılamazsa anlaşılır bir hata gösterilir.
+2. **Şirket eşleme kuralları** ekleyin: AD'deki `company`, `department` vb. değerine göre ya da personelin bulunduğu OU'ya göre (`DN ile biter`) şirket atanır. AD'deki serbest metin şirket adı tek başına yetki vermez; kurala uymayan kişi oluşturulmaz, raporda “Eşleşmeyen” olarak listelenir.
+3. **Önizleme ile eşitle**. Önizleme hiçbir kaydı değiştirmez; yeni, güncellenen, pasife alınacak ve eşleşmeyen kişileri listeler.
+4. Sonuç uygunsa **Bu değişiklikleri uygula**.
+
+Elle girilmiş bir personel, aynı şirkette sicil numarası (`employeeID`) eşleşirse yeni kayıt açılmadan AD hesabına bağlanır.
+
+### 6.3 Güvenlik kuralları
+
+- Arama tamamlanamazsa (ağ, TLS, servis hesabı) hiçbir personel kaydı değişmez.
+- Dönen kayıt sayısı mevcut aktif AD personelinin `minFoundRatio` oranının altındaysa (ör. yanlış OU) kimse topluca pasife alınmaz; raporda uyarı görünür.
+- AD'de devre dışı bırakılan veya artık bulunmayan personel pasife alınır, silinmez; zimmet geçmişi korunur. Açık zimmeti varsa raporda belirtilir.
+- Pasife alınan personele bağlı uygulama hesabı kapatılır ve açık oturumları hemen sonlandırılır.
+- Aynı anda tek eşitleme çalışır.
+
+### 6.4 AD hesaplarına giriş yetkisi
+
+AD'den gelen personel otomatik giriş hakkı kazanmaz. **Yönetim → Kullanıcılar → Hesap aç → Kurum hesabı (AD)** ile personel seçilip rol ve şirket/depo kapsamı verilir.
+
+Girişte kullanıcı adı `ad.soyad`, `NUROL\ad.soyad` veya `ad.soyad@nurol.local` biçiminde yazılabilir. Her girişte:
+
+- Hesap AD'de aranır; devre dışıysa giriş reddedilir.
+- AD kimliği, yetkinin verildiği kimlikle aynı olmalıdır. Aynı kullanıcı adıyla sonradan açılan başka bir AD hesabı yetkiyi devralamaz.
+- Parola AD'de doğrulanır. Başarısız doğrulama yerel parolaya düşmez. AD'ye ulaşılamazsa giriş yapılamaz (yerel yönetici hesabı her zaman kullanılabilir).
+
+## 7. Yedekleme ve geri yükleme
 
 Veritabanı ve nesne deposu **birlikte** yedeklenmelidir. Tutanak kayıtları veritabanında, dosyaları nesne deposundadır.
 
@@ -167,7 +217,7 @@ Evrak dosyaları yüklendikten sonra değiştirilmez; her sürüm ayrı bir nesn
 
 Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumun yedekleme altyapısına göre belirlenmelidir.
 
-## 7. Güvenlik notları
+## 8. Güvenlik notları
 
 - Oturum cookie'si HttpOnly, SameSite=Strict ve üretimde Secure'dür. Uygulama HTTPS arkasında (ingress TLS) çalışmalıdır.
 - Durum değiştiren tüm API isteklerinde özel bir başlık zorunludur (CSRF koruması); uygulama CORS açmaz.
@@ -176,7 +226,7 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 - Kullanıcı devre dışı bırakıldığında, rolü veya parolası değiştiğinde açık oturumları sunucudan hemen iptal edilir.
 - Yüklenen dosyaların türü uzantıdan değil içerikten belirlenir (PDF/JPEG/PNG); en fazla 20 MB.
 
-## 8. Sorun giderme
+## 9. Sorun giderme
 
 | Belirti | Olası neden |
 |---|---|
@@ -185,14 +235,20 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 | `/healthz/ready` → `"db": false` | Bağlantı cümlesi, ağ erişimi veya PostgreSQL TLS/CA ayarı. |
 | İlk yönetici oluşmadı | `Bootstrap__AdminPassword` parola kuralına uymuyor (Job loglarında yazar) veya zaten bir sistem yöneticisi var. |
 | Evrak yüklemesi 413 | Ingress gövde sınırı 20 MB'tan küçük. |
+| AD testi: “servis hesabı bilgileri reddedildi” | `bindDn` veya Secret'taki `Directory__BindPassword` hatalı. |
+| AD testi: “sunucuya ulaşılamadı” | Ağ erişimi (636), sunucu adı veya kurum CA (`corporateCa`, `LDAPTLS_CACERT`). |
+| Eşitlemede çok sayıda “Eşleşmeyen” | Şirket eşleme kuralı eksik; AD'deki şirket/birim değerlerini raporda görüp kural ekleyin. |
+| AD kullanıcısı giriş yapamıyor | `loginEnabled` kapalı, uygulamada hesap açılmamış, hesap AD'de devre dışı veya AD kimliği değişmiş (hesabı yeniden açın). |
 
-## 9. Doğrulama durumu
+## 10. Doğrulama durumu
 
 **Bu teslimde test edilenler:**
 
-- 19 otomatik entegrasyon testi, gerçek PostgreSQL 17 üzerinde (Testcontainers). Kapsamları: rol ve depo kapsamı (liste, detay, CSV dışa aktarım, belge indirme), şirket bazlı zimmet kuralı, eşzamanlı çift zimmet engeli, tekrarlanan istek (idempotency), eşzamanlı stok çıkışlarında negatif bakiye engeli, IMEI kuralları (15 hane, baştaki sıfır, grup geneli benzersizlik), alan arşivleme ve değerlerin korunması, kural çakışma raporu, iyimser eşzamanlılık, PDF belgesinin sonradan değişmemesi, imzalı evrak sürümleme ve içerik türü denetimi, iki ayrı uygulama örneği arasında oturum paylaşımı ve hesap kapatılınca oturum iptali.
+- 34 otomatik test. Aşama 1'e ek olarak: transfer akışı ve yetkileri (gönderme kaynak, teslim alma hedef depo yetkisi; transferdeki cihazın zimmetlenememesi; stok yetersizse gönderimin tamamen geri alınması; eşzamanlı gönderimde stokun tek kez düşmesi; şirketler arası transfer engeli), görünümlerin kişiye özel olması, AD eşitleme kuralları (yeniden adlandırmada mükerrer kayıt oluşmaması, başarısız veya şüpheli aramada toplu pasife alma yapılmaması, eşleşmeyen kişinin raporlanması) ve AD girişi (yerel parolaya düşmeme, dizine ulaşılamadığında reddetme, devre dışı hesabın oturumunun iptali, aynı kullanıcı adıyla yeni AD hesabının yetkiyi devralamaması).
+- LDAP istemcisi gerçek bir dizin sunucusuna (OpenLDAP) karşı test edildi: sayfalı arama, öznitelik eşlemesi, parola doğrulama, boş parolanın reddi, filtre enjeksiyonu. `ad-sync` komutu imaj içinde salt okunur dosya sistemiyle çalıştırıldı.
+- Ayrıca Aşama 1'deki 19 entegrasyon testi, gerçek PostgreSQL 17 üzerinde (Testcontainers). Kapsamları: rol ve depo kapsamı (liste, detay, CSV dışa aktarım, belge indirme), şirket bazlı zimmet kuralı, eşzamanlı çift zimmet engeli, tekrarlanan istek (idempotency), eşzamanlı stok çıkışlarında negatif bakiye engeli, IMEI kuralları (15 hane, baştaki sıfır, grup geneli benzersizlik), alan arşivleme ve değerlerin korunması, kural çakışma raporu, iyimser eşzamanlılık, PDF belgesinin sonradan değişmemesi, imzalı evrak sürümleme ve içerik türü denetimi, iki ayrı uygulama örneği arasında oturum paylaşımı ve hesap kapatılınca oturum iptali.
 - S3 uyumlu depoya (SeaweedFS) bayt bayt doğru yazma/okuma testi.
-- Tarayıcı akış testi (`tests/e2e/akis.cjs`): giriş, alan ekleme, sütun tercihi, zimmet, PDF indirme, imzalı evrak yükleme, stok sınırı.
+- Tarayıcı akış testi (`tests/e2e/akis.cjs`): giriş, alan ekleme, sütun tercihi, kayıtlı görünüm, zimmet, PDF indirme, imzalı evrak yükleme, stok sınırı, transfer gönderme ve teslim alma. AD eşitleme önizlemesi, AD personeline hesap açma ve AD parolasıyla giriş ayrıca tarayıcıda denendi.
 - İmajın salt okunur kök dosya sistemiyle ve root olmayan kullanıcıyla çalışması, `migrate` işinin şemayı kurup ilk yöneticiyi oluşturması, şema hazır olmadan hazırlık kontrolünün 503 dönmesi.
 - Docker Compose ortamının uçtan uca çalışması.
 - `helm lint` ve `helm template`; üretilen manifestoların Kubernetes 1.31 şemasına göre doğrulanması (kubeconform, katı mod).
@@ -202,5 +258,6 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 - Helm chart'ın gerçek kümede kurulumu. Geliştirme ortamında yerel Kubernetes (kind) çalıştırılamadı; chart yalnızca şablon ve şema düzeyinde doğrulandı.
 - Kurumsal PostgreSQL'e TLS ile bağlantı (`SSL Mode=VerifyFull` ve kurum CA).
 - Kurumsal S3/MinIO servisiyle çalışma (adres, path-style erişim, CA).
+- Gerçek Windows Active Directory ile LDAPS bağlantısı: testler OpenLDAP üzerinde yapıldı. AD'ye özgü `objectGUID` (ikili GUID) ve `userAccountControl` (devre dışı biti) okuma kodu birim düzeyinde yazıldı ama gerçek AD'de doğrulanmadı. İlk kurulumda **Bağlantıyı test et** ve **Önizleme** ile kontrol edilmelidir.
 - Ingress denetleyicisinin gövde sınırı ve TLS ayarları.
 - Yedekleme ve geri yükleme prosedürünün kurum altyapısında denenmesi.

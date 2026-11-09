@@ -16,9 +16,10 @@ ENV ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_RUNNING_IN_CONTAINER=true \
     DOTNET_gcServer=0 \
     TZ=Europe/Istanbul
-# Npgsql'in Kerberos/GSSAPI desteği için gereken kütüphane (kurumsal PostgreSQL kimlik doğrulaması).
+# libgssapi-krb5-2: Npgsql Kerberos/GSSAPI desteği (kurumsal PostgreSQL kimlik doğrulaması).
+# libldap2: Active Directory (LDAPS) bağlantısı için System.DirectoryServices.Protocols'ün kullandığı OpenLDAP kütüphanesi.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+ && apt-get install -y --no-install-recommends libgssapi-krb5-2 libldap2 \
  && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app .
 # Resmi imajdaki root olmayan kullanıcı (UID 1654).

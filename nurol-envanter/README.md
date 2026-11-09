@@ -16,8 +16,13 @@ Bu klasör sıfırdan başlatılan yeni projedir; depodaki diğer dosyalarla ba�
 - Zimmet, iade ve devir; A4 PDF tutanak (işlem anındaki verilerle dondurulur); ıslak imzalı kopya yükleme ve sürümleme
 - Genel bakış: gerçek verilerle göstergeler, depo dağılımı, kritik stok, eksik imzalı evrak, son hareketler
 
-Transfer, Active Directory ve kayıtlı görünümler 2. aşamada; raporlar, bildirimler ve barkod 3. aşamadadır
-([tasarım](docs/tasarim.md), [plan](docs/plan-asama-1.md)).
+## Aşama 2'de eklenenler
+
+- Depolar arası transfer (tekil cihaz ve miktarlı malzeme): taslak → gönderildi → teslim alındı. Gönderme kaynak, teslim alma hedef depo yetkisi ister; stok teslimde hedefe geçer.
+- Kullanıcıya özel kayıtlı görünümler (filtre, sıralama ve sütun düzeni hesapta saklanır)
+- Active Directory: LDAPS ile personel eşitleme (önizlemeli, şirket eşleme kurallı, zamanlanabilir) ve AD hesaplarıyla giriş
+
+Raporlar, bildirimler ve barkod 3. aşamadadır ([tasarım](docs/tasarim.md), [Aşama 1 planı](docs/plan-asama-1.md), [Aşama 2 notları](docs/asama-2.md)).
 
 ## Hızlı başlangıç
 
@@ -48,14 +53,14 @@ Dockerfile
 ## Testler
 
 ```bash
-dotnet test                                  # Docker gerekir (Testcontainers ile PostgreSQL ve SeaweedFS)
+dotnet test                                  # Docker gerekir (Testcontainers ile PostgreSQL, SeaweedFS ve OpenLDAP)
 NE_TEST_DB="Host=...;Database=...;Username=...;Password=..." dotnet test   # var olan boş bir veritabanıyla
 NE_URL=http://localhost:8080 node tests/e2e/akis.cjs                       # compose ortamı açıkken
 ```
 
 ## Kullanılan açık kaynak bileşenler
 
-ASP.NET Core, Entity Framework Core, Npgsql (PostgreSQL), PDFsharp-MigraDoc 6.2.4 (MIT), AWS SDK for .NET (S3),
+ASP.NET Core, Entity Framework Core, Npgsql (PostgreSQL), System.DirectoryServices.Protocols (LDAP), PDFsharp-MigraDoc 6.2.4 (MIT), AWS SDK for .NET (S3),
 DejaVu Sans yazı tipi (PDF'te Türkçe karakterler için; lisansı `src/Nurol.Envanter.Server/Fonts/LICENSE-DejaVu.txt`).
 
 PDFsharp-MigraDoc 6.5 ve sonrası AGPL-3.0 lisanslıdır; bu nedenle MIT lisanslı 6.2.4 sürümüne sabitlenmiştir.

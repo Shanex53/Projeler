@@ -26,3 +26,15 @@ ingress:
   tls:
     enabled: true
     secretName: envanter-kurum-tls
+
+directory:
+  syncEnabled: true
+  loginEnabled: true
+  server: dc01.nurol.local
+  baseDn: OU=Personel,DC=nurol,DC=local
+  bindDn: CN=svc-envanter,OU=Servis Hesaplari,DC=nurol,DC=local
+  domain: nurol.local
+  schedule:
+    enabled: true
+    cron: "0 2 * * *"
+    note: "Her gece 02:00"

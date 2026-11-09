@@ -20,6 +20,29 @@ data:
   Storage__Bucket: {{ .Values.config.storage.bucket | quote }}
   Storage__Region: {{ .Values.config.storage.region | quote }}
   Storage__ForcePathStyle: {{ .Values.config.storage.forcePathStyle | quote }}
+  {{- with .Values.directory }}
+  Directory__Enabled: {{ .syncEnabled | quote }}
+  Directory__LoginEnabled: {{ .loginEnabled | quote }}
+  Directory__Server: {{ .server | quote }}
+  Directory__Port: {{ .port | quote }}
+  Directory__UseSsl: {{ .useSsl | quote }}
+  Directory__BaseDn: {{ .baseDn | quote }}
+  Directory__Filter: {{ .filter | quote }}
+  Directory__BindDn: {{ .bindDn | quote }}
+  Directory__Domain: {{ .domain | quote }}
+  Directory__IdAttribute: {{ .attributes.id | quote }}
+  Directory__IdIsBinaryGuid: {{ .attributes.idIsBinaryGuid | quote }}
+  Directory__UserNameAttribute: {{ .attributes.userName | quote }}
+  Directory__DisplayNameAttribute: {{ .attributes.displayName | quote }}
+  Directory__EmailAttribute: {{ .attributes.email | quote }}
+  Directory__TitleAttribute: {{ .attributes.title | quote }}
+  Directory__DepartmentAttribute: {{ .attributes.department | quote }}
+  Directory__CompanyAttribute: {{ .attributes.company | quote }}
+  Directory__EmployeeNumberAttribute: {{ .attributes.employeeNumber | quote }}
+  Directory__DisabledMode: {{ .disabledMode | quote }}
+  Directory__MinFoundRatio: {{ .minFoundRatio | quote }}
+  Directory__ScheduleNote: {{ if .schedule.enabled }}{{ .schedule.note | quote }}{{ else }}""{{ end }}
+  {{- end }}
   {{- range $k, $v := .Values.config.extraEnv }}
   {{ $k }}: {{ $v | quote }}
   {{- end }}

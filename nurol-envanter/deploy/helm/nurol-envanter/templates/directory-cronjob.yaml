@@ -1,0 +1,47 @@
+{{- if and .Values.directory.syncEnabled .Values.directory.schedule.enabled }}
+# Zamanlanmış AD personel eşitlemesi. Aynı anda birden fazla çalışmaz:
+# concurrencyPolicy: Forbid + uygulamadaki PostgreSQL advisory lock.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "ne.fullname" . }}-ad-esitleme
+  labels: {{- include "ne.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.directory.schedule.cron | quote }}
+  {{- with .Values.directory.schedule.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 1800
+      template:
+        metadata:
+          labels:
+            {{- include "ne.selector" . | nindent 12 }}
+            app.kubernetes.io/component: ad-esitleme
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext: {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: ad-esitleme
+              image: {{ include "ne.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args: ["ad-sync"]
+              envFrom: {{- include "ne.envFrom" . | nindent 16 }}
+              {{- with (include "ne.caEnv" .) }}
+              env: {{- . | nindent 16 }}
+              {{- end }}
+              resources: {{- toYaml .Values.directory.resources | nindent 16 }}
+              securityContext: {{- toYaml .Values.securityContext | nindent 16 }}
+              volumeMounts: {{- include "ne.volumeMounts" . | nindent 16 }}
+          volumes: {{- include "ne.volumes" . | nindent 12 }}
+{{- end }}

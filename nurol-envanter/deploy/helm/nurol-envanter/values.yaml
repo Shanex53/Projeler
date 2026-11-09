@@ -14,6 +14,7 @@ replicaCount: 2
 #   Storage__AccessKey           Nesne deposu erişim anahtarı
 #   Storage__SecretKey           Nesne deposu gizli anahtarı
 #   Bootstrap__AdminPassword     İlk sistem yöneticisi parolası (yalnızca ilk kurulumda kullanılır)
+#   Directory__BindPassword      AD servis hesabı parolası (yalnızca directory kullanılıyorsa)
 existingSecret: nurol-envanter-gizli
 
 # Hassas olmayan ayarlar (ConfigMap'e yazılır).
@@ -32,8 +33,42 @@ config:
   # Ek ortam değişkenleri (ad: değer).
   extraEnv: {}
 
-# Kurum CA sertifikası (PostgreSQL/S3 TLS doğrulaması için). Var olan bir ConfigMap'teki
-# PEM dosyası /etc/ssl/certs/kurum-ca.crt olarak bağlanır ve SSL_CERT_FILE ile kullanılır.
+# Active Directory. Personel eşitlemesi ve AD ile giriş ayrı ayrı açılır.
+# Servis hesabı salt okunur olmalıdır; parolası Secret'taki Directory__BindPassword anahtarındadır.
+directory:
+  syncEnabled: false
+  loginEnabled: false
+  server: ""                 # ör. dc01.nurol.local
+  port: 636
+  useSsl: true               # LDAPS; kurum CA'sı corporateCa ile verilir
+  baseDn: ""                 # ör. OU=Personel,DC=nurol,DC=local
+  filter: "(&(objectCategory=person)(objectClass=user))"
+  bindDn: ""                 # ör. CN=svc-envanter,OU=Servis,DC=nurol,DC=local
+  domain: nurol.local        # kalıcı kimlik öneki (alan adı + objectGUID)
+  attributes:
+    id: objectGUID
+    idIsBinaryGuid: true
+    userName: sAMAccountName
+    displayName: displayName
+    email: mail
+    title: title
+    department: department
+    company: company
+    employeeNumber: employeeID
+  disabledMode: UserAccountControl
+  minFoundRatio: 0.5
+  # Zamanlanmış eşitleme (CronJob). Aynı anda tek eşitleme çalışır (concurrencyPolicy + veritabanı kilidi).
+  schedule:
+    enabled: false
+    cron: "0 2 * * *"
+    timeZone: Europe/Istanbul
+    note: "Her gece 02:00"
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+# Kurum CA sertifikası (PostgreSQL, S3 ve LDAPS TLS doğrulaması için). Var olan bir ConfigMap'teki
+# PEM dosyası /etc/ssl/certs/kurum-ca.crt olarak bağlanır; SSL_CERT_FILE ve LDAPTLS_CACERT ile kullanılır.
 corporateCa:
   enabled: false
   configMap: kurum-ca

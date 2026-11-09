@@ -27,6 +27,9 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- if .Values.corporateCa.enabled }}
 - name: SSL_CERT_FILE
   value: /etc/ssl/certs/kurum-ca.crt
+# OpenLDAP istemcisi (LDAPS) kurum CA'sını bu değişkenden okur.
+- name: LDAPTLS_CACERT
+  value: /etc/ssl/certs/kurum-ca.crt
 {{- end }}
 {{- end -}}
 {{- define "ne.volumeMounts" -}}
