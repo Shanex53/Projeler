@@ -51,6 +51,15 @@ public static class DefinitionEndpoints
                 .ToListAsync();
             return list;
         });
+        // Transfer hedefi seçimi: kullanıcının şirketlerindeki tüm aktif depolar (yalnızca ad; envanter içeriği göstermez).
+        api.MapGet("/warehouses/targets", async (HttpContext ctx, AppDbContext db) =>
+        {
+            var a = await ctx.Access();
+            var q = db.Warehouses.Where(w => !w.Archived);
+            if (!a.IsSystemAdmin) q = q.Where(w => a.Companies.Contains(w.CompanyId));
+            return await q.OrderBy(w => w.Name)
+                .Select(w => new WarehouseDto(w.Id, w.CompanyId, w.Company!.Name, w.Name, null, false, new List<LocationDto>(), 0)).ToListAsync();
+        });
         api.MapPost("/warehouses", async (WarehouseSave req, HttpContext ctx, AppDbContext db) =>
         {
             var a = await ctx.Access();

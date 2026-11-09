@@ -5,65 +5,242 @@
 
 <PageTitle>Yönetim · Nurol Envanter</PageTitle>
 <div class="head">
-    <div class="t"><h1>Yönetim</h1><p>Uygulama kullanıcıları, roller ve şirket/depo kapsamı. Açık kayıt ekranı yoktur; hesapları yönetici oluşturur.</p></div>
-    @if (Session.IsSystemAdmin) { <button class="btn pri" @onclick="() => Open(null)">+ Yerel hesap</button> }
+    <div class="t"><h1>Yönetim</h1><p>Uygulama kullanıcıları, roller, kapsam ve Active Directory. Açık kayıt ekranı yoktur; hesapları yönetici açar.</p></div>
+    @if (Session.IsSystemAdmin && tab == "users") { <button class="btn pri" @onclick="() => Open(null)">+ Hesap aç</button> }
 </div>
 @if (!Session.IsSystemAdmin) { <div class="note">Bu sayfa yalnızca sistem yöneticisine açıktır.</div> }
 else
 {
-    <div class="grid g2">
-        <section class="card">
-            <div class="ch"><h2>Uygulama kullanıcıları</h2></div>
-            <div class="tw">
-                <table>
-                    <thead><tr><th>Hesap</th><th>Tür</th><th>Rol</th><th>Kapsam</th><th>Son giriş</th><th></th></tr></thead>
-                    <tbody>
-                        @foreach (var u in users)
-                        {
-                            <tr>
-                                <td><b class="mono">@u.UserName</b><span class="sub">@u.DisplayName</span></td>
-                                <td><span class="tag">@(u.AccountType == "Local" ? "Yerel" : "AD")</span></td>
-                                <td>@string.Join(", ", u.Roles.Select(Roles.Label)) @if (!u.IsActive) { <span class="pill p-mute">Kapalı</span> }</td>
-                                <td>@(u.Scopes.Count == 0 ? "Tüm şirketler" : string.Join(", ", u.Scopes.Select(s => s.WarehouseName ?? s.CompanyName + " (tümü)")))</td>
-                                <td class="muted num">@Fmt.DateTime(u.LastLoginAt)</td>
-                                <td><button class="btn sm" @onclick="() => Open(u)">Düzenle</button></td>
-                            </tr>
-                        }
-                    </tbody>
-                </table>
-            </div>
-        </section>
-        <div class="stack">
+    <div class="seg" role="tablist" style="align-self:flex-start">
+        <button role="tab" aria-selected="@(tab == "users")" class="@(tab == "users" ? "on" : "")" @onclick='() => tab = "users"'>Kullanıcılar</button>
+        <button role="tab" aria-selected="@(tab == "ad")" class="@(tab == "ad" ? "on" : "")" @onclick="OpenAd">Active Directory</button>
+    </div>
+
+    @if (tab == "users")
+    {
+        <div class="grid g2">
+            <section class="card">
+                <div class="ch"><h2>Uygulama kullanıcıları</h2></div>
+                <div class="tw">
+                    <table>
+                        <thead><tr><th>Hesap</th><th>Tür</th><th>Rol</th><th>Kapsam</th><th>Son giriş</th><th></th></tr></thead>
+                        <tbody>
+                            @foreach (var u in users)
+                            {
+                                <tr>
+                                    <td><b class="mono">@u.UserName</b><span class="sub">@u.DisplayName</span></td>
+                                    <td><span class="tag @(u.AccountType == "Directory" ? "info" : "")">@(u.AccountType == "Directory" ? "AD" : "Yerel")</span></td>
+                                    <td>@string.Join(", ", u.Roles.Select(Roles.Label)) @if (!u.IsActive) { <span class="pill p-mute">Kapalı</span> }</td>
+                                    <td>@(u.Scopes.Count == 0 ? "Tüm şirketler" : string.Join(", ", u.Scopes.Select(s => s.WarehouseName ?? s.CompanyName + " (tümü)")))</td>
+                                    <td class="muted num">@Fmt.DateTime(u.LastLoginAt)</td>
+                                    <td><button class="btn sm" @onclick="() => Open(u)">Düzenle</button></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
             <section class="card">
                 <div class="ch"><h2>Roller</h2></div>
                 <div class="cb">
                     <dl class="kv">
-                        <dt>Sistem yöneticisi</dt><dd>Tüm şirketler, kullanıcılar ve tanımlar.</dd>
+                        <dt>Sistem yöneticisi</dt><dd>Tüm şirketler, kullanıcılar, AD ve tanımlar.</dd>
                         <dt>Şirket yöneticisi</dt><dd>Atandığı şirketlerin tüm depoları; kategori ve alan tanımları.</dd>
-                        <dt>Depo sorumlusu</dt><dd>Atandığı depolarda envanter, stok ve zimmet işlemleri.</dd>
+                        <dt>Depo sorumlusu</dt><dd>Atandığı depolarda envanter, stok, zimmet ve transfer işlemleri.</dd>
                         <dt>Denetçi</dt><dd>Kapsamındaki kayıt ve evrakları görüntüler; değişiklik yapamaz.</dd>
                     </dl>
+                    <p class="note" style="margin:12px 0 0">AD'den eşitlenen personel otomatik giriş hakkı kazanmaz. “Hesap aç” ile AD personeline rol ve kapsam verin; parolası AD'de doğrulanır.</p>
                 </div>
             </section>
+        </div>
+    }
+    else if (ad is not null)
+    {
+        <div class="grid g2">
+            <div class="stack">
+                <section class="card">
+                    <div class="ch">
+                        <h2>Bağlantı</h2>
+                        <span class="pill @(ad.SyncEnabled ? "p-ok" : "p-mute")">Eşitleme @(ad.SyncEnabled ? "açık" : "kapalı")</span>
+                        <span class="pill @(ad.LoginEnabled ? "p-ok" : "p-mute")">AD ile giriş @(ad.LoginEnabled ? "açık" : "kapalı")</span>
+                    </div>
+                    <div class="cb stack">
+                        @if (!ad.Configured)
+                        {
+                            <div class="note warn">Bağlantı yapılandırılmamış. Sunucu, arama kökü ve servis hesabı kurulumda Helm değerleri ve Secret ile verilir (<span class="mono">directory.*</span>). Ayrıntılar kurulum kılavuzunda.</div>
+                        }
+                        <dl class="kv">
+                            <dt>Sunucu</dt><dd class="mono">@(ad.Server is null ? "—" : $"{(ad.UseSsl ? "ldaps" : "ldap")}://{ad.Server}:{ad.Port}")</dd>
+                            <dt>Arama kökü</dt><dd class="mono">@(ad.BaseDn ?? "—")</dd>
+                            <dt>Filtre</dt><dd class="mono">@ad.Filter</dd>
+                            <dt>Kalıcı kimlik</dt><dd><span class="mono">@ad.Domain</span> + <span class="mono">@ad.IdAttribute</span></dd>
+                            <dt>Kullanıcı adı</dt><dd class="mono">@ad.UserNameAttribute</dd>
+                            <dt>Zamanlama</dt><dd>@(ad.ScheduleNote ?? "Zamanlanmış eşitleme yok (yalnızca elle)")</dd>
+                        </dl>
+                        <div class="row">
+                            <button class="btn" disabled="@(busy || !ad.Configured)" @onclick="Test">Bağlantıyı test et</button>
+                            <button class="btn pri" disabled="@(busy || !ad.Configured)" @onclick="Preview">Önizleme ile eşitle</button>
+                        </div>
+                        @if (test is not null) { <div class="note @(test.Ok ? "" : "error")">@test.Message</div> }
+                        <ErrorNote Error="error" />
+                        <p class="muted" style="margin:0;font-size:12.5px">Önizleme hiçbir kaydı değiştirmez. Arama tamamlanamazsa veya beklenenden çok az kayıt dönerse personel topluca pasife alınmaz.</p>
+                    </div>
+                </section>
+                <section class="card">
+                    <div class="ch"><h2>Şirket eşleme kuralları</h2><button class="btn sm" @onclick="() => OpenRule(null)">+ Kural</button></div>
+                    <div class="tw">
+                        <table>
+                            <thead><tr><th>Sıra</th><th>Koşul</th><th>Şirket</th><th></th></tr></thead>
+                            <tbody>
+                                @if (rules.Count == 0) { <tr><td colspan="4" class="empty">Kural yok. Kural olmadan AD'den yeni personel oluşturulmaz; eşleşmeyenler raporlanır.</td></tr> }
+                                @foreach (var r in rules)
+                                {
+                                    <tr>
+                                        <td class="num">@r.Priority</td>
+                                        <td><span class="mono">@r.Attribute</span> @DirectoryMatch.Label(r.MatchType) <b>“@r.Value”</b></td>
+                                        <td>@r.CompanyName</td>
+                                        <td class="row"><button class="btn sm" @onclick="() => OpenRule(r)">Düzenle</button><button class="btn sm danger" @onclick="() => DeleteRule(r)">Sil</button></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="toolbar foot">AD'deki serbest metin şirket adı tek başına yetki vermez; personelin şirketi bu kurallarla belirlenir. İlk eşleşen kural geçerlidir.</div>
+                </section>
+            </div>
             <section class="card">
-                <div class="ch"><h2>Active Directory</h2><span class="tag">2. aşama</span></div>
-                <div class="cb"><p class="muted" style="margin:0">AD personel eşitlemesi ve kurum hesabıyla giriş 2. aşamada eklenecek. Şimdilik personeller elle kaydedilir ve yerel hesaplar kullanılır.</p></div>
+                <div class="ch"><h2>Son eşitlemeler</h2></div>
+                <div class="tw">
+                    <table>
+                        <thead><tr><th>Zaman</th><th>Durum</th><th class="right">Bulunan</th><th class="right">Yeni</th><th class="right">Güncellenen</th><th class="right">Pasif</th><th class="right">Eşleşmeyen</th></tr></thead>
+                        <tbody>
+                            @if (ad.RecentRuns.Count == 0) { <tr><td colspan="7" class="empty">Henüz eşitleme yapılmadı.</td></tr> }
+                            @foreach (var r in ad.RecentRuns)
+                            {
+                                <tr class="click" @onclick="() => ShowRun(r.Id)">
+                                    <td class="num">@Fmt.DateTime(r.StartedAt)<span class="sub">@r.Trigger · @r.UserName</span></td>
+                                    <td><span class="pill @(r.Status switch { "Başarılı" => "p-ok", "Başarısız" => "p-crit", "Önizleme" => "p-info", _ => "p-warn" })">@r.Status</span></td>
+                                    <td class="num right">@r.Found</td><td class="num right">@r.Created</td><td class="num right">@r.Updated</td><td class="num right">@r.Deactivated</td><td class="num right">@r.Unmatched</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
             </section>
         </div>
-    </div>
+    }
+}
+
+@if (run is not null)
+{
+    <Modal Title="@(run.Status == "Önizleme" ? "Eşitleme önizlemesi" : "Eşitleme sonucu")" OnClose="() => run = null" Wide="true">
+        <ChildContent>
+            <div class="stack">
+                <div class="stat-line">
+                    <span>Bulunan <b>@run.Found</b></span><span>Yeni <b>@run.Created</b></span><span>Güncellenen <b>@run.Updated</b></span>
+                    <span>Pasife alınacak/alınan <b>@run.Deactivated</b></span><span>Eşleşmeyen <b>@run.Unmatched</b></span>
+                </div>
+                @if (run.Message is not null) { <div class="note @(run.Status == "Başarısız" ? "error" : "warn")">@run.Message</div> }
+                <div class="tw" style="max-height:420px;overflow-y:auto">
+                    <table>
+                        <thead><tr><th>Değişiklik</th><th>Kişi</th><th>Ayrıntı</th></tr></thead>
+                        <tbody>
+                            @if (run.Changes.Count == 0) { <tr><td colspan="3" class="empty">Değişiklik yok; personel kayıtları AD ile uyumlu.</td></tr> }
+                            @foreach (var c in run.Changes)
+                            {
+                                <tr><td><span class="pill @(c.Kind switch { "Yeni" or "Etkinleştirildi" or "Bağlandı" => "p-ok", "Pasife alındı" or "Hesap kapatıldı" => "p-crit", "Eşleşmeyen" or "Uyarı" => "p-warn", _ => "p-info" })">@c.Kind</span></td><td>@c.Name</td><td class="muted">@c.Detail</td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (run.Unmatched > 0) { <p class="muted" style="margin:0;font-size:12.5px">Eşleşmeyen kişiler için şirket eşleme kuralı ekleyip tekrar eşitleyin.</p> }
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => run = null">Kapat</button>
+            @if (run.Status == "Önizleme" && ad?.SyncEnabled == true) { <button class="btn pri" disabled="@busy" @onclick="Apply">Bu değişiklikleri uygula</button> }
+            else if (run.Status == "Önizleme") { <span class="muted" style="font-size:12.5px">Uygulamak için eşitlemeyi açın (directory.enabled).</span> }
+        </Footer>
+    </Modal>
+}
+
+@if (ruleForm is not null)
+{
+    <Modal Title="@(ruleForm.Id is null ? "Kural ekle" : "Kuralı düzenle")" OnClose="() => ruleForm = null">
+        <ChildContent>
+            <form class="form two" id="rf" @onsubmit="SaveRule">
+                <label class="fld" for="rf-type">Eşleme
+                    <select id="rf-type" value="@ruleForm.MatchType" @onchange="e => ruleForm.MatchType = e.Value?.ToString() ?? DirectoryMatch.Equals">
+                        @foreach (var m in DirectoryMatch.All) { <option value="@m">@DirectoryMatch.Label(m)</option> }
+                    </select>
+                </label>
+                @if (ruleForm.MatchType != DirectoryMatch.DnEndsWith)
+                {
+                    <label class="fld" for="rf-attr">AD özniteliği
+                        <select id="rf-attr" value="@ruleForm.Attribute" @onchange="e => ruleForm.Attribute = e.Value?.ToString() ?? DefaultAttr">
+                            <option value="company">company (şirket)</option>
+                            <option value="department">department (birim)</option>
+                            <option value="title">title (unvan)</option>
+                            <option value="mail">mail (e-posta)</option>
+                            <option value="employeeid">employeeid (sicil)</option>
+                        </select>
+                    </label>
+                }
+                <label class="fld full" for="rf-val">Değer
+                    <input id="rf-val" @bind="ruleForm.Value" class="@(ruleForm.MatchType == DirectoryMatch.DnEndsWith ? "mono" : "")"
+                           placeholder="@(ruleForm.MatchType == DirectoryMatch.DnEndsWith ? "OU=Insaat,DC=nurol,DC=local" : "Nurol İnşaat")" />
+                </label>
+                <label class="fld" for="rf-co">Şirket
+                    <select id="rf-co" value="@ruleForm.CompanyId" @onchange="e => ruleForm.CompanyId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">Seçin</option>
+                        @foreach (var c in companies) { <option value="@c.Id">@c.Name</option> }
+                    </select>
+                </label>
+                <label class="fld" for="rf-pri">Sıra (küçük önce)<input id="rf-pri" type="number" @bind="ruleForm.Priority" /></label>
+                <div class="full"><ErrorNote Error="error" /></div>
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => ruleForm = null">Vazgeç</button>
+            <button class="btn pri" type="submit" form="rf" disabled="@busy">Kaydet</button>
+        </Footer>
+    </Modal>
 }
 
 @if (form is not null)
 {
-    <Modal Title="@(form.Id is null ? "Yerel hesap oluştur" : "Kullanıcıyı düzenle")" OnClose="() => form = null" Wide="true">
+    <Modal Title="@(form.Id is null ? "Hesap aç" : "Kullanıcıyı düzenle")" OnClose="() => form = null" Wide="true">
         <ChildContent>
             <form class="form two" id="uf" @onsubmit="Save">
-                <label class="fld" for="u-name">Kullanıcı adı<input id="u-name" @bind="form.UserName" disabled="@(form.Id is not null)" autocomplete="off" /></label>
-                <label class="fld" for="u-disp">Ad soyad<input id="u-disp" @bind="form.DisplayName" /></label>
-                <label class="fld" for="u-pass">@(form.Id is null ? "Parola" : "Yeni parola (değiştirmek için)")
-                    <input id="u-pass" type="password" @bind="form.Password" autocomplete="new-password" />
-                    <span class="help">En az 10 karakter; büyük harf, küçük harf ve rakam içermeli.</span>
-                </label>
+                @if (form.Id is null)
+                {
+                    <div class="fld full"><span>Hesap türü</span>
+                        <div class="seg" style="align-self:flex-start">
+                            <button type="button" class="@(form.AccountType == "Directory" ? "on" : "")" @onclick='() => form.AccountType = "Directory"'>Kurum hesabı (AD)</button>
+                            <button type="button" class="@(form.AccountType == "Local" ? "on" : "")" @onclick='() => form.AccountType = "Local"'>Yerel hesap</button>
+                        </div>
+                    </div>
+                }
+                @if (form.AccountType == "Directory" && form.Id is null)
+                {
+                    <div class="fld full"><span>AD'den eşitlenmiş personel</span>
+                        @if (adPeople.Count == 0) { <p class="muted" style="margin:0;font-weight:400">Hesabı olmayan aktif AD personeli yok. Önce Active Directory sekmesinden eşitleme yapın.</p> }
+                        else { <EmployeePicker Employees="adPeople" Selected="form.EmployeeId" SelectedChanged="v => form.EmployeeId = v" /> }
+                    </div>
+                }
+                else
+                {
+                    <label class="fld" for="u-name">Kullanıcı adı<input id="u-name" @bind="form.UserName" disabled="@(form.Id is not null)" autocomplete="off" /></label>
+                    <label class="fld" for="u-disp">Ad soyad<input id="u-disp" @bind="form.DisplayName" disabled="@(form.AccountType == "Directory")" /></label>
+                    @if (form.AccountType == "Local")
+                    {
+                        <label class="fld" for="u-pass">@(form.Id is null ? "Parola" : "Yeni parola (değiştirmek için)")
+                            <input id="u-pass" type="password" @bind="form.Password" autocomplete="new-password" />
+                            <span class="help">En az 10 karakter; büyük harf, küçük harf ve rakam içermeli.</span>
+                        </label>
+                    }
+                    else { <p class="note full" style="margin:0">Parola AD'de yönetilir. Hesap AD'de devre dışı bırakılırsa giriş yapamaz; eşitlemede uygulama hesabı da kapatılır.</p> }
+                }
                 <label class="fld" for="u-role">Rol
                     <select id="u-role" value="@form.Role" @onchange="e => form.Role = e.Value?.ToString() ?? Roles.Auditor">
                         @foreach (var r in Roles.All) { <option value="@r">@Roles.Label(r)</option> }
@@ -101,12 +278,21 @@ else
 }
 
 @code {
-    class UserForm { public string? Id, UserName, DisplayName, Password; public string Role = Roles.WarehouseManager; public bool IsActive = true; public HashSet<(Guid, Guid?)> Scopes = []; }
+    class UserForm { public string? Id, UserName, DisplayName, Password; public string AccountType = "Local"; public Guid? EmployeeId; public string Role = Roles.WarehouseManager; public bool IsActive = true; public HashSet<(Guid, Guid?)> Scopes = []; }
+    class RuleForm { public Guid? Id, CompanyId; public string MatchType = DirectoryMatch.Equals, Attribute = "company"; public string? Value; public int Priority = 10; }
 
+    const string DefaultAttr = "company";
+    string tab = "users";
     List<UserDto> users = [];
     List<CompanyDto> companies = [];
     List<WarehouseDto> warehouses = [];
+    List<EmployeeDto> adPeople = [];
+    List<DirectoryRuleDto> rules = [];
+    DirectoryStatusDto? ad;
+    DirectoryTestResult? test;
+    DirectorySyncRunDto? run;
     UserForm? form;
+    RuleForm? ruleForm;
     ApiException? error;
     bool busy;
 
@@ -120,13 +306,34 @@ else
 
     async Task Load() => users = await Api.Get<List<UserDto>>("api/users");
 
-    void Open(UserDto? u)
+    async Task OpenAd()
+    {
+        tab = "ad"; error = null; test = null;
+        await LoadAd();
+    }
+
+    async Task LoadAd()
+    {
+        try
+        {
+            ad = await Api.Get<DirectoryStatusDto>("api/directory/status");
+            rules = await Api.Get<List<DirectoryRuleDto>>("api/directory/rules");
+        }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task Open(UserDto? u)
     {
         error = null;
-        form = u is null ? new UserForm() : new UserForm
+        if (u is null)
         {
-            Id = u.Id, UserName = u.UserName, DisplayName = u.DisplayName, Role = u.Roles.FirstOrDefault() ?? Roles.Auditor, IsActive = u.IsActive,
-            Scopes = u.Scopes.Select(s => (s.CompanyId, s.WarehouseId)).ToHashSet()
+            var emps = (await Api.Get<PagedResult<EmployeeDto>>("api/employees?pageSize=500")).Items;
+            adPeople = emps.Where(e => e.Source == EmployeeSource.Directory && e.IsActive && !e.HasAccount).ToList();
+        }
+        form = u is null ? new UserForm { AccountType = adPeople.Count > 0 ? "Directory" : "Local" } : new UserForm
+        {
+            Id = u.Id, UserName = u.UserName, DisplayName = u.DisplayName, AccountType = u.AccountType, Role = u.Roles.FirstOrDefault() ?? Roles.Auditor,
+            IsActive = u.IsActive, Scopes = u.Scopes.Select(s => (s.CompanyId, s.WarehouseId)).ToHashSet()
         };
     }
 
@@ -138,11 +345,77 @@ else
         var scopes = form!.Role == Roles.SystemAdmin ? new List<ScopeSave>() : form.Scopes.Select(s => new ScopeSave(s.Item1, s.Item2)).ToList();
         try
         {
-            if (form.Id is null) await Api.Post("api/users", new UserCreate(form.UserName ?? "", form.DisplayName ?? "", form.Password ?? "", form.Role, scopes));
+            if (form.Id is null)
+            {
+                if (form.AccountType == "Directory" && form.EmployeeId is null) { error = new ApiException("AD personelini seçin."); return; }
+                await Api.Post("api/users", new UserCreate(form.UserName ?? "", form.DisplayName ?? "", form.Password, form.Role, scopes, form.AccountType, form.EmployeeId));
+            }
             else await Api.Put($"api/users/{form.Id}", new UserUpdate(form.DisplayName ?? "", form.IsActive, form.Role, scopes, string.IsNullOrEmpty(form.Password) ? null : form.Password));
             form = null; Toasts.Show("Kullanıcı kaydedildi"); await Load();
         }
         catch (ApiException ex) { error = ex; }
         finally { busy = false; }
+    }
+
+    async Task Test()
+    {
+        busy = true; error = null; test = null;
+        try { test = await Api.Post<DirectoryTestResult>("api/directory/test", null); }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Preview()
+    {
+        busy = true; error = null;
+        try { run = await Api.Post<DirectorySyncRunDto>("api/directory/sync?preview=true", null); await LoadAd(); }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Apply()
+    {
+        busy = true;
+        try
+        {
+            run = await Api.Post<DirectorySyncRunDto>("api/directory/sync?preview=false", null);
+            Toasts.Show(run.Status == "Başarılı" ? "Eşitleme tamamlandı" : "Eşitleme tamamlanamadı");
+            await LoadAd();
+        }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
+        finally { busy = false; }
+    }
+
+    async Task ShowRun(Guid id)
+    {
+        try { run = await Api.Get<DirectorySyncRunDto>($"api/directory/runs/{id}"); }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
+    }
+
+    void OpenRule(DirectoryRuleDto? r)
+    {
+        error = null;
+        ruleForm = r is null ? new RuleForm { Priority = (rules.Count + 1) * 10 } : new RuleForm { Id = r.Id, CompanyId = r.CompanyId, MatchType = r.MatchType, Attribute = r.Attribute == "dn" ? "company" : r.Attribute, Value = r.Value, Priority = r.Priority };
+    }
+
+    async Task SaveRule()
+    {
+        error = null;
+        if (ruleForm!.CompanyId is null) { error = new ApiException("Şirket seçin."); return; }
+        busy = true;
+        try
+        {
+            var body = new DirectoryRuleSave(ruleForm.Priority, ruleForm.Attribute, ruleForm.MatchType, ruleForm.Value ?? "", ruleForm.CompanyId.Value);
+            if (ruleForm.Id is Guid id) await Api.Put($"api/directory/rules/{id}", body); else await Api.Post("api/directory/rules", body);
+            ruleForm = null; Toasts.Show("Kural kaydedildi"); await LoadAd();
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task DeleteRule(DirectoryRuleDto r)
+    {
+        try { await Api.Delete<object>($"api/directory/rules/{r.Id}"); Toasts.Show("Kural silindi"); await LoadAd(); }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
     }
 }

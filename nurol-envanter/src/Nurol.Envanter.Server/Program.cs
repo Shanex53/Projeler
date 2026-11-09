@@ -60,6 +60,11 @@ var storage = cfg.GetSection("Storage").Get<StorageOptions>() ?? new StorageOpti
 builder.Services.AddSingleton(storage);
 builder.Services.AddSingleton<IFileStore>(storage.Provider.Equals("S3", StringComparison.OrdinalIgnoreCase) ? new S3Store(storage) : new FileSystemStore(storage));
 
+var directory = cfg.GetSection("Directory").Get<DirectoryOptions>() ?? new DirectoryOptions();
+builder.Services.AddSingleton(directory);
+builder.Services.AddSingleton<IDirectoryClient, LdapDirectoryClient>();
+builder.Services.AddScoped<Nurol.Envanter.Server.Services.DirectorySync>();
+
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -78,6 +83,14 @@ if (args.Contains("migrate"))
 {
     await Startup.MigrateAsync(app.Services, seedRoles: true);
     await Startup.EnsureBootstrapAdminAsync(app.Services, cfg);
+    return;
+}
+// "ad-sync" argümanı: Kubernetes CronJob'u AD personel eşitlemesini çalıştırır ve çıkar.
+if (args.Contains("ad-sync"))
+{
+    await using var syncScope = app.Services.CreateAsyncScope();
+    var run = await syncScope.ServiceProvider.GetRequiredService<Nurol.Envanter.Server.Services.DirectorySync>().RunAsync(false, "Zamanlanmış", "ad-eşitleme");
+    Environment.ExitCode = run.Status == "Başarılı" ? 0 : 1;
     return;
 }
 if (cfg.GetValue("Database:MigrateOnStartup", app.Environment.IsDevelopment()))
@@ -128,6 +141,9 @@ StockEndpoints.Map(api);
 PeopleEndpoints.Map(api);
 AssignmentEndpoints.Map(api);
 DashboardEndpoints.Map(api);
+TransferEndpoints.Map(api);
+ViewEndpoints.Map(api);
+DirectoryEndpoints.Map(api);
 api.MapFallback(() => Results.NotFound(new Nurol.Envanter.Shared.ApiError("İstenen adres bulunamadı.")));
 
 app.MapFallbackToFile("index.html");

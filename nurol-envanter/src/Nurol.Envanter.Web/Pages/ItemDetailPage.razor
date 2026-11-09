@@ -23,6 +23,7 @@ else
                 case ItemStatus.InStock:
                     <button class="btn" @onclick='() => Open("maintenance")'>Bakıma al</button>
                     <button class="btn danger" @onclick='() => Open("retire")'>Kullanım dışı bırak</button>
+                    <a class="btn" href="transferler/yeni?cihaz=@item.Id">Transfere ekle</a>
                     <a class="btn" href="envanter/@item.Id/duzenle">Düzenle</a>
                     <a class="btn pri" href="zimmetler/yeni?cihaz=@item.Id">Zimmetle</a>
                     break;
@@ -41,6 +42,10 @@ else
             }
         }
     </div>
+    @if (item.Status == ItemStatus.InTransit)
+    {
+        <div class="note warn"><b>Transferde:</b> cihaz hedef depoda teslim alınana kadar zimmet, bakım veya başka transfer işlemine konu olamaz. <a href="transferler">Transferler</a></div>
+    }
     @if (item.Status == ItemStatus.InMaintenance && item.MaintenanceNote is not null)
     {
         <div class="note warn"><b>Bakımda:</b> @item.MaintenanceNote</div>
@@ -182,6 +187,6 @@ else
     static string Color(string type) => type switch
     {
         "Zimmet" => "var(--accent)", "İade" => "var(--ok)", "Bakım" => "var(--warn)", "Kayıt" => "var(--ok)",
-        "Evrak" => "var(--move)", "Kullanım dışı" => "var(--muted)", _ => "var(--line)"
+        "Evrak" => "var(--move)", "Transfer" => "var(--move)", "Kullanım dışı" => "var(--muted)", _ => "var(--line)"
     };
 }

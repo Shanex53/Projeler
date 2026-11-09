@@ -1,0 +1,76 @@
+@page "/transferler"
+@inject Api Api
+@inject Session Session
+@inject NavigationManager Nav
+
+<PageTitle>Transferler · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t"><h1>Transferler</h1><p>Aynı şirketin depoları arasında. Gönderilen kalemler teslim alınana kadar başka işlemde kullanılamaz.</p></div>
+    @if (Session.CanWrite) { <a class="btn pri" href="transferler/yeni">+ Yeni transfer</a> }
+</div>
+
+<section class="card">
+    <div class="toolbar">
+        <div class="seg" role="group" aria-label="Durum">
+            <button class="@(status is null && !mine ? "on" : "")" @onclick="() => Set(null, false)">Tümü</button>
+            <button class="@(mine ? "on" : "")" @onclick="() => Set(null, true)">Teslim almam gerekenler</button>
+            @foreach (var s in Enum.GetValues<TransferStatus>())
+            {
+                <button class="@(status == s ? "on" : "")" @onclick="() => Set(s, false)">@TransferLabels.Status(s)</button>
+            }
+        </div>
+    </div>
+    @if (error is not null) { <div class="cb"><ErrorNote Error="error" /></div> }
+    <div class="tw">
+        <table>
+            <thead><tr><th>Transfer no</th><th>Kaynak → hedef</th><th>Kalemler</th><th>Aşama</th><th>Son işlem</th><th></th></tr></thead>
+            <tbody>
+                @if (result is null) { <tr><td colspan="6" class="empty">Yükleniyor…</td></tr> }
+                else if (result.Items.Count == 0) { <tr><td colspan="6" class="empty">@(mine ? "Teslim almanızı bekleyen transfer yok." : "Transfer bulunamadı.")</td></tr> }
+                else
+                {
+                    @foreach (var t in result.Items)
+                    {
+                        <tr class="click" @onclick='() => Nav.NavigateTo($"transferler/{t.Id}")'>
+                            <td class="mono"><b>@t.No</b><span class="sub">@t.CreatedBy</span></td>
+                            <td>@t.SourceWarehouseName<span class="sub">→ @t.TargetWarehouseName</span></td>
+                            <td>@Summary(t)</td>
+                            <td><TransferSteps Status="t.Status" /></td>
+                            <td class="muted num">@Fmt.DateTime(t.ReceivedAt ?? t.SentAt ?? t.CreatedAt)</td>
+                            <td>
+                                @if (t.CanReceive) { <span class="pill p-move">Teslim alın</span> }
+                                else if (t.CanSend) { <span class="pill p-warn">Gönderilmedi</span> }
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    @if (result is not null) { <div class="toolbar foot"><span>@result.Total transfer</span><Pager Page="result.Page" PageSize="result.PageSize" Total="result.Total" OnPage="Go" /></div> }
+</section>
+<p class="note">Göndermek için kaynak depoda, teslim almak için hedef depoda yetkiniz olmalıdır. Kısmi teslim yoktur; eksik gelen kalem varsa teslim almayın, kaynak depoyla görüşün.</p>
+
+@code {
+    [SupplyParameterFromQuery(Name = "bekleyen")] public string? Bekleyen { get; set; }
+    PagedResult<TransferListRow>? result;
+    ApiException? error;
+    TransferStatus? status;
+    bool mine;
+    int page = 1;
+
+    protected override Task OnInitializedAsync() { mine = Bekleyen == "1"; return Load(); }
+
+    async Task Load()
+    {
+        var p = new List<string> { $"page={page}", "pageSize=50" };
+        if (status is not null) p.Add($"status={status}");
+        if (mine) p.Add("waitingForMe=true");
+        try { result = await Api.Get<PagedResult<TransferListRow>>("api/transfers?" + string.Join("&", p)); error = null; }
+        catch (ApiException ex) { error = ex; result = new([], 0, 1, 50); }
+    }
+
+    Task Set(TransferStatus? s, bool m) { status = s; mine = m; page = 1; return Load(); }
+    Task Go(int p) { page = p; return Load(); }
+    static string Summary(TransferListRow t) => string.Join(" · ", new[] { t.ItemCount > 0 ? $"{t.ItemCount} cihaz" : null, t.StockLineCount > 0 ? $"{t.StockLineCount} malzeme" : null }.Where(x => x is not null));
+}

@@ -7,6 +7,7 @@
 <PageTitle>Personeller · Nurol Envanter</PageTitle>
 <div class="head">
     <div class="t"><h1>Personeller</h1><p>Personel kaydı giriş hesabından ayrıdır. Giriş hesabı olmayan personele de zimmet yapılabilir.</p></div>
+    @if (Session.IsSystemAdmin) { <a class="btn" href="yonetim">AD ile eşitle</a> }
     @if (Session.CanWrite) { <button class="btn pri" @onclick="() => Edit(null)">+ Personel ekle</button> }
 </div>
 @if (result?.Items.Any(e => !e.IsActive && e.OpenItemCount > 0) == true)

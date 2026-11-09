@@ -2,8 +2,8 @@
 @using System.Text.Json
 @inject Api Api
 @inject Session Session
+@inject Toasts Toasts
 @inject NavigationManager Nav
-@inject IJSRuntime JS
 
 <PageTitle>Envanter · Nurol Envanter</PageTitle>
 <div class="head">
@@ -13,13 +13,27 @@
 </div>
 
 <section class="card">
+    <div class="views" role="tablist" aria-label="Kayıtlı görünümler">
+        <button role="tab" aria-selected="@(active is null)" class="@(active is null ? "on" : "")" @onclick="() => ApplyView(null)">Tüm envanter</button>
+        @foreach (var v in views)
+        {
+            <button role="tab" aria-selected="@(active?.Id == v.Id)" class="@(active?.Id == v.Id ? "on" : "")" @onclick="() => ApplyView(v)">@v.Name</button>
+        }
+        <button style="color:var(--accent)" @onclick="OpenSave">+ Görünümü kaydet</button>
+        @if (active is not null)
+        {
+            <span style="flex:1"></span>
+            @if (dirty) { <button style="color:var(--accent)" @onclick="UpdateView">Değişiklikleri “@active.Name” görünümüne kaydet</button> }
+            <button style="color:var(--crit)" @onclick="DeleteView">Görünümü sil</button>
+        }
+    </div>
     <div class="toolbar">
-        <form class="search" @onsubmit="Reload"><label class="sr" for="iq">Listede ara</label><input id="iq" @bind="q" placeholder="Etiket, seri no, model, personel, özel alan" /></form>
-        <select class="sel-in" aria-label="Kategori" value="@categoryId" @onchange="e => { categoryId = NullGuid(e.Value); return Reload(); }">
+        <form class="search" @onsubmit="() => { Changed(); return Reload(); }"><label class="sr" for="iq">Listede ara</label><input id="iq" @bind="q" placeholder="Etiket, seri no, model, personel, özel alan" /></form>
+        <select class="sel-in" aria-label="Kategori" value="@categoryId" @onchange="e => { categoryId = NullGuid(e.Value); Changed(); return Reload(); }">
             <option value="">Tüm kategoriler</option>
             @foreach (var c in categories) { <option value="@c.Id">@c.Name</option> }
         </select>
-        <select class="sel-in" aria-label="Depo" value="@warehouseId" @onchange="e => { warehouseId = NullGuid(e.Value); return Reload(); }">
+        <select class="sel-in" aria-label="Depo" value="@warehouseId" @onchange="e => { warehouseId = NullGuid(e.Value); Changed(); return Reload(); }">
             <option value="">Tüm depolar</option>
             @foreach (var w in warehouses) { <option value="@w.Id">@w.Name</option> }
         </select>
@@ -51,7 +65,7 @@
                             </span>
                         </label>
                     }
-                    <p class="muted" style="font-size:11.5px;margin:8px 4px 0">Tercih bu tarayıcıda saklanır. Sütun gizlemek veriyi saklamaz; erişim yetkiyle belirlenir. Kullanıcıya özel kayıtlı görünümler 2. aşamada.</p>
+                    <p class="muted" style="font-size:11.5px;margin:8px 4px 0">@(active is null ? "Bu düzen hesabınıza kaydedilir; her cihazda aynı görünür." : $"“{active.Name}” görünümünü güncellemek için üstteki kaydet bağlantısını kullanın.") Sütun gizlemek veriyi saklamaz; erişim yetkiyle belirlenir.</p>
                     <div class="row" style="margin-top:8px"><button class="btn sm" @onclick="ResetCols">Varsayılana dön</button><button class="btn sm pri" @onclick="() => colsOpen = false">Kapat</button></div>
                 </div>
             }
@@ -103,22 +117,42 @@
     }
 </section>
 
+@if (saveOpen)
+{
+    <Modal Title="Görünümü kaydet" OnClose="() => saveOpen = false">
+        <ChildContent>
+            <form class="form" id="vf" @onsubmit="SaveView">
+                <label class="fld" for="vf-name">Görünüm adı<input id="vf-name" @bind="viewName" maxlength="80" placeholder="Ör. Bakımdaki bilgisayarlar" /></label>
+                <p class="muted" style="margin:0;font-size:12.5px">Arama, filtreler, sıralama ve sütun düzeni birlikte kaydedilir. Görünüm yalnızca size görünür.</p>
+                <ErrorNote Error="viewError" />
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => saveOpen = false">Vazgeç</button>
+            <button class="btn pri" type="submit" form="vf">Kaydet</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
     [SupplyParameterFromQuery(Name = "q")] public string? Q { get; set; }
     [SupplyParameterFromQuery(Name = "durum")] public string? Durum { get; set; }
 
     record Col(string Key, string Label, string? Sort, bool Custom, FieldType? Type, bool Fixed = false) { public bool On { get; set; } = true; }
+    record ViewState(string? Q, Guid? CategoryId, Guid? WarehouseId, ItemStatus? Status, bool MissingDoc, string Sort, bool Desc, List<string[]> Cols);
 
-    const string StoreKey = "ne.envanter.sutunlar.v1";
     List<Col> cols = [];
+    List<FieldDefinitionDto> fields = [];
     List<CategoryDto> categories = [];
     List<WarehouseDto> warehouses = [];
+    List<SavedViewDto> views = [];
+    SavedViewDto? defaultView, active;
     PagedResult<ItemListRow>? result;
-    ApiException? error;
-    string? q;
+    ApiException? error, viewError;
+    string? q, viewName;
     Guid? categoryId, warehouseId;
     ItemStatus? status;
-    bool missingDoc, colsOpen, desc;
+    bool missingDoc, colsOpen, desc, dirty, saveOpen;
     string sort = "tag";
     int page = 1;
 
@@ -145,56 +179,104 @@
             var cTask = Api.Get<List<CategoryDto>>("api/categories");
             var wTask = Api.Get<List<WarehouseDto>>("api/warehouses");
             var fTask = Api.Get<List<FieldDefinitionDto>>("api/fields/all");
+            var vTask = Api.Get<List<SavedViewDto>>("api/views?page=envanter");
             categories = await cTask; warehouses = await wTask;
-            var fields = (await fTask).Where(f => !f.Archived).ToList();
-            await BuildCols(fields);
+            fields = (await fTask).Where(f => !f.Archived).ToList();
+            var all = await vTask;
+            defaultView = all.FirstOrDefault(v => v.Name == "");
+            views = all.Where(v => v.Name != "").ToList();
+            cols = BuildCols(defaultView is null ? null : Parse(defaultView.State)?.Cols);
         }
-        catch (ApiException ex) { error = ex; }
+        catch (ApiException ex) { error = ex; cols = BuildCols(null); }
         await Load();
     }
 
-    async Task BuildCols(List<FieldDefinitionDto> fields)
+    List<Col> BuildCols(List<string[]>? prefs)
     {
         var all = Standard();
-        // Etikete göre tek sütun: aynı adlı alanlar (ör. farklı kategorilerdeki "IMEI") ayrı anahtarlarla gelir.
         foreach (var f in fields) all.Add(new Col("f:" + f.Key, f.Label, "f:" + f.Id, true, f.Type) { On = f.Key is "imei_1" });
-        try
-        {
-            var saved = await JS.InvokeAsync<string?>("ne.get", StoreKey);
-            if (saved is not null)
-            {
-                var prefs = JsonSerializer.Deserialize<List<string[]>>(saved) ?? [];
-                var ordered = new List<Col>();
-                foreach (var p in prefs)
-                    if (all.FirstOrDefault(c => c.Key == p[0]) is { } c) { c.On = c.Fixed || p[1] == "1"; ordered.Add(c); }
-                ordered.AddRange(all.Where(c => !ordered.Contains(c)));
-                all = ordered;
-            }
-        }
-        catch (JSException) { }
-        catch (JsonException) { }
-        cols = all;
+        if (prefs is null || prefs.Count == 0) return all;
+        var ordered = new List<Col>();
+        foreach (var p in prefs)
+            if (p.Length == 2 && all.FirstOrDefault(c => c.Key == p[0]) is { } c && !ordered.Contains(c)) { c.On = c.Fixed || p[1] == "1"; ordered.Add(c); }
+        ordered.AddRange(all.Where(c => !ordered.Contains(c)));
+        return ordered;
     }
 
-    async Task SaveCols()
+    static ViewState? Parse(string json)
     {
-        try { await JS.InvokeVoidAsync("ne.set", StoreKey, JsonSerializer.Serialize(cols.Select(c => new[] { c.Key, c.On ? "1" : "0" }))); }
-        catch (JSException) { }
+        try { return JsonSerializer.Deserialize<ViewState>(json, Api.Json); }
+        catch (JsonException) { return null; }
     }
 
-    Task Toggle(int i, bool on) { cols[i].On = on; return SaveCols(); }
+    string CurrentState() => JsonSerializer.Serialize(new ViewState(q, categoryId, warehouseId, status, missingDoc, sort, desc,
+        cols.Select(c => new[] { c.Key, c.On ? "1" : "0" }).ToList()), Api.Json);
+
+    async Task ColumnsChanged()
+    {
+        if (active is not null) { dirty = true; return; }
+        try { defaultView = await Api.Post<SavedViewDto>("api/views", new SavedViewSave("envanter", "", CurrentState())); }
+        catch (ApiException ex) { Toasts.Show("Sütun tercihi kaydedilemedi: " + ex.Message); }
+    }
+
+    Task Toggle(int i, bool on) { cols[i].On = on; return ColumnsChanged(); }
     Task Move(int i, int d)
     {
         var j = i + d;
         if (j < 0 || j >= cols.Count) return Task.CompletedTask;
         (cols[i], cols[j]) = (cols[j], cols[i]);
-        return SaveCols();
+        return ColumnsChanged();
     }
-    async Task ResetCols()
+    Task ResetCols() { cols = BuildCols(null); return ColumnsChanged(); }
+
+    async Task ApplyView(SavedViewDto? v)
     {
-        var fields = await Api.Get<List<FieldDefinitionDto>>("api/fields/all");
-        try { await JS.InvokeVoidAsync("ne.set", StoreKey, "[]"); } catch (JSException) { }
-        await BuildCols(fields.Where(f => !f.Archived).ToList());
+        active = v; dirty = false;
+        var st = v is null ? null : Parse(v.State);
+        q = st?.Q; categoryId = st?.CategoryId; warehouseId = st?.WarehouseId; status = st?.Status; missingDoc = st?.MissingDoc ?? false;
+        sort = st?.Sort ?? "tag"; desc = st?.Desc ?? false;
+        cols = BuildCols(st?.Cols ?? (defaultView is null ? null : Parse(defaultView.State)?.Cols));
+        await Reload();
+    }
+
+    void OpenSave() { viewName = null; viewError = null; saveOpen = true; }
+
+    async Task SaveView()
+    {
+        viewError = null;
+        if (string.IsNullOrWhiteSpace(viewName)) { viewError = new ApiException("Görünüme bir ad verin."); return; }
+        try
+        {
+            var v = await Api.Post<SavedViewDto>("api/views", new SavedViewSave("envanter", viewName.Trim(), CurrentState()));
+            views = views.Append(v).OrderBy(x => x.Name).ToList();
+            active = v; dirty = false; saveOpen = false;
+            Toasts.Show($"“{v.Name}” görünümü kaydedildi");
+        }
+        catch (ApiException ex) { viewError = ex; }
+    }
+
+    async Task UpdateView()
+    {
+        try
+        {
+            var v = await Api.Put<SavedViewDto>($"api/views/{active!.Id}", new SavedViewSave("envanter", active.Name, CurrentState()));
+            views = views.Select(x => x.Id == v.Id ? v : x).ToList();
+            active = v; dirty = false;
+            Toasts.Show($"“{v.Name}” güncellendi");
+        }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
+    }
+
+    async Task DeleteView()
+    {
+        try
+        {
+            await Api.Delete<object>($"api/views/{active!.Id}");
+            Toasts.Show($"“{active.Name}” silindi");
+            views.Remove(active);
+            await ApplyView(null);
+        }
+        catch (ApiException ex) { Toasts.Show(ex.Message); }
     }
 
     string Query(bool paging)
@@ -219,12 +301,13 @@
         catch (ApiException ex) { error = ex; result = new([], 0, 1, 50); }
     }
 
+    void Changed() { if (active is not null) dirty = true; }
     Task Reload() { page = 1; return Load(); }
     Task Go(int p) { page = p; return Load(); }
-    Task SetStatus(ItemStatus? s) { status = s; missingDoc = false; return Reload(); }
-    Task ToggleMissing() { missingDoc = !missingDoc; status = null; return Reload(); }
-    Task SortBy(string s) { if (sort == s) desc = !desc; else { sort = s; desc = false; } return Reload(); }
-    Task Clear() { q = null; categoryId = null; warehouseId = null; status = null; missingDoc = false; return Reload(); }
+    Task SetStatus(ItemStatus? s) { status = s; missingDoc = false; Changed(); return Reload(); }
+    Task ToggleMissing() { missingDoc = !missingDoc; status = null; Changed(); return Reload(); }
+    Task SortBy(string s) { if (sort == s) desc = !desc; else { sort = s; desc = false; } Changed(); return Reload(); }
+    Task Clear() { q = null; categoryId = null; warehouseId = null; status = null; missingDoc = false; Changed(); return Reload(); }
     static Guid? NullGuid(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
 
     RenderFragment Cell(ItemListRow r, Col c) => c.Key switch

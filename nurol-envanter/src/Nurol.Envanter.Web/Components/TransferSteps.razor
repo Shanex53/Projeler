@@ -1,0 +1,13 @@
+@if (Status == TransferStatus.Cancelled)
+{
+    <span class="pill p-mute">İptal edildi</span>
+}
+else
+{
+    <div class="steps" aria-label="@TransferLabels.Status(Status)">
+        <span class="@(Status > TransferStatus.Draft ? "done" : "now")">Taslak</span><i></i>
+        <span class="@(Status == TransferStatus.Received ? "done" : Status == TransferStatus.Sent ? "now" : "")">Gönderildi</span><i></i>
+        <span class="@(Status == TransferStatus.Received ? "done" : "")">Teslim alındı</span>
+    </div>
+}
+@code { [Parameter] public TransferStatus Status { get; set; } }

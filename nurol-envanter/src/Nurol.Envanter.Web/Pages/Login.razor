@@ -16,13 +16,16 @@
         <form class="login-box form" @onsubmit="Submit">
             <div><h1>Giriş yap</h1><p class="muted" style="margin:4px 0 0">Hesap türünüzü seçin.</p></div>
             <div class="seg" role="tablist">
-                <button type="button" class="on" role="tab" aria-selected="true">Yerel hesap</button>
-                <button type="button" disabled title="2. aşamada" role="tab" aria-selected="false">Kurum hesabı (AD)</button>
+                <button type="button" class="@(directory ? "on" : "")" role="tab" aria-selected="@directory" disabled="@(!directoryEnabled)"
+                        title="@(directoryEnabled ? "" : "Kurum hesabıyla giriş kapalı")" @onclick="() => directory = true">Kurum hesabı (AD)</button>
+                <button type="button" class="@(!directory ? "on" : "")" role="tab" aria-selected="@(!directory)" @onclick="() => directory = false">Yerel hesap</button>
             </div>
-            <label class="fld" for="lu">Kullanıcı adı<input id="lu" @bind="user" autocomplete="username" autofocus /></label>
+            <label class="fld" for="lu">@(directory ? "Kurum kullanıcı adı" : "Kullanıcı adı")<input id="lu" @bind="user" autocomplete="username" autofocus placeholder="@(directory ? "ad.soyad" : "")" /></label>
             <label class="fld" for="lp">Parola<input id="lp" type="password" @bind="pass" autocomplete="current-password" /></label>
             @if (error is not null) { <div class="note error" role="alert">@error</div> }
-            <p class="note">Yerel hesaplar yönetici tarafından oluşturulur. Kurum (AD) hesabıyla giriş 2. aşamada açılacak. Parolanızı unuttuysanız yöneticinize başvurun.</p>
+            <p class="note">@(directory
+                ? "Windows parolanızla giriş yaparsınız. Uygulamaya erişim yöneticinin yetki vermesiyle açılır; parolanız bu uygulamada saklanmaz."
+                : "Yerel hesaplar yönetici tarafından oluşturulur. Parolanızı unuttuysanız yöneticinize başvurun.")</p>
             <button class="btn pri" type="submit" style="padding:10px" disabled="@busy">@(busy ? "Giriş yapılıyor…" : "Giriş yap")</button>
         </form>
     </div>
@@ -32,14 +35,25 @@
     [SupplyParameterFromQuery(Name = "donus")] public string? Return { get; set; }
     string user = "", pass = "";
     string? error;
-    bool busy;
+    bool busy, directory, directoryEnabled;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var o = await Api.Get<System.Text.Json.JsonElement>("api/auth/options");
+            directoryEnabled = o.GetProperty("directoryLogin").GetBoolean();
+            directory = directoryEnabled;
+        }
+        catch (ApiException) { }
+    }
 
     async Task Submit()
     {
         busy = true; error = null;
         try
         {
-            var me = await Api.Post<MeDto>("api/auth/login", new LoginRequest(user, pass));
+            var me = await Api.Post<MeDto>("api/auth/login", new LoginRequest(user, pass, directory ? "Directory" : "Local"));
             Session.Set(me);
             var target = Return is { Length: > 0 } r && !r.StartsWith("giris") && !r.Contains("://") ? r : "";
             Nav.NavigateTo(target);

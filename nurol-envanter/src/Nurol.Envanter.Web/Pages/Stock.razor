@@ -10,6 +10,7 @@
     {
         <button class="btn" @onclick="NewItem">+ Malzeme tanımla</button>
         <button class="btn" @onclick="() => OpenMove(StockMovementType.In)">Stok girişi</button>
+        <a class="btn" href="transferler/yeni">Depolar arası transfer</a>
         <button class="btn" @onclick="() => OpenMove(StockMovementType.Adjust)">Düzeltme</button>
         <button class="btn pri" @onclick="() => OpenMove(StockMovementType.Out)">Sarf çıkışı</button>
     }
@@ -69,7 +70,7 @@
                     {
                         <tr>
                             <td class="mono">@m.No<span class="sub">@Fmt.DateTime(m.At)</span></td>
-                            <td><span class="pill @(m.Type switch { StockMovementType.In => "p-ok", StockMovementType.Out => "p-info", _ => "p-warn" })">@Labels.Movement(m.Type)</span></td>
+                            <td><span class="pill @(m.Type switch { StockMovementType.In => "p-ok", StockMovementType.Out => "p-info", StockMovementType.TransferIn or StockMovementType.TransferOut => "p-move", _ => "p-warn" })">@Labels.Movement(m.Type)</span></td>
                             <td>@m.StockItemName</td>
                             <td>@m.WarehouseName</td>
                             <td class="num right">@(m.Quantity > 0 ? "+" : "")@Fmt.Qty(m.Quantity) @m.Unit</td>

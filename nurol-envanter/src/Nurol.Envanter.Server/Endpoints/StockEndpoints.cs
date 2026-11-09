@@ -185,6 +185,25 @@ public static class StockEndpoints
         return new StockMovementDto(m.Id, m.No, m.At, m.Type, item.Name, item.Unit, wh.Name, m.Quantity, m.BalanceAfter, emp?.FullName, m.Project, m.Note, m.UserName);
     }
 
+    /// <summary>Bakiyeye ekler (yoksa oluşturur) ve yeni bakiyeyi döner.</summary>
+    internal static async Task<decimal> AddBalance(AppDbContext db, Guid stockItemId, Guid warehouseId, decimal qty, CancellationToken ct = default) =>
+        (await db.Database.SqlQuery<decimal>($"""
+            INSERT INTO stock_balances (stock_item_id, warehouse_id, quantity) VALUES ({stockItemId}, {warehouseId}, {qty})
+            ON CONFLICT (stock_item_id, warehouse_id) DO UPDATE SET quantity = stock_balances.quantity + EXCLUDED.quantity
+            RETURNING quantity AS "Value"
+            """).ToListAsync(ct))[0];
+
+    /// <summary>Bakiye yetiyorsa düşer ve yeni bakiyeyi döner; yetmiyorsa hiçbir şey değişmez ve null döner.</summary>
+    internal static async Task<decimal?> TryTakeBalance(AppDbContext db, Guid stockItemId, Guid warehouseId, decimal qty, CancellationToken ct = default)
+    {
+        var rows = await db.Database.SqlQuery<decimal>($"""
+            UPDATE stock_balances SET quantity = quantity - {qty}
+            WHERE stock_item_id = {stockItemId} AND warehouse_id = {warehouseId} AND quantity >= {qty}
+            RETURNING quantity AS "Value"
+            """).ToListAsync(ct);
+        return rows.Count == 0 ? null : rows[0];
+    }
+
     static void Apply(StockItem s, StockItemSave r)
     {
         DefinitionEndpoints.Require(r.Name, "Malzeme adı");

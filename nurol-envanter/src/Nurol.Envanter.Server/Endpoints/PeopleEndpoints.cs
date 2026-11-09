@@ -86,21 +86,37 @@ public static class PeopleEndpoints
             var roles = await (from ur in db.UserRoles join r in db.Roles on ur.RoleId equals r.Id select new { ur.UserId, r.Name }).ToListAsync();
             return users.Select(u => new UserDto(u.Id, u.UserName!, u.DisplayName, u.AccountType, u.IsActive,
                 roles.Where(r => r.UserId == u.Id).Select(r => r.Name!).ToList(),
-                u.Scopes.Select(s => new ScopeDto(s.CompanyId, s.Company!.Name, s.WarehouseId, s.Warehouse?.Name)).ToList(), u.LastLoginAt)).ToList();
+                u.Scopes.Select(s => new ScopeDto(s.CompanyId, s.Company!.Name, s.WarehouseId, s.Warehouse?.Name)).ToList(), u.LastLoginAt, u.EmployeeId)).ToList();
         });
 
         api.MapPost("/users", async (UserCreate req, HttpContext ctx, AppDbContext db, UserManager<AppUser> um) =>
         {
             var a = await ctx.Access(); a.RequireSystemAdmin();
-            DefinitionEndpoints.Require(req.UserName, "Kullanıcı adı");
-            DefinitionEndpoints.Require(req.DisplayName, "Ad soyad");
             ValidateRole(req.Role, req.Scopes);
-            var user = new AppUser { UserName = req.UserName.Trim().ToLowerInvariant(), DisplayName = req.DisplayName.Trim(), AccountType = "Local", IsActive = true, LockoutEnabled = true };
-            var res = await um.CreateAsync(user, req.Password ?? "");
+            AppUser user;
+            IdentityResult res;
+            if (req.AccountType == "Directory")
+            {
+                // AD'den aktarılan personel otomatik giriş hakkı kazanmaz; yönetici burada yetki verir. Parola AD'dedir.
+                var emp = await db.Employees.FirstOrDefaultAsync(e => e.Id == req.EmployeeId) ?? throw AppException.Invalid("AD'den gelen bir personel seçin.");
+                if (emp.DirectoryId is null || emp.DirectoryUserName is null) throw AppException.Invalid("Seçilen personel AD'den eşitlenmemiş.");
+                if (!emp.IsActive) throw AppException.Conflict("Pasif personele hesap açılamaz.");
+                if (await db.Users.AnyAsync(u => u.DirectoryId == emp.DirectoryId)) throw AppException.Conflict("Bu personelin zaten bir uygulama hesabı var.");
+                user = new AppUser { UserName = emp.DirectoryUserName, DisplayName = emp.FullName, AccountType = "Directory", DirectoryId = emp.DirectoryId,
+                    EmployeeId = emp.Id, IsActive = true, LockoutEnabled = true };
+                res = await um.CreateAsync(user);
+            }
+            else
+            {
+                DefinitionEndpoints.Require(req.UserName, "Kullanıcı adı");
+                DefinitionEndpoints.Require(req.DisplayName, "Ad soyad");
+                user = new AppUser { UserName = req.UserName.Trim().ToLowerInvariant(), DisplayName = req.DisplayName.Trim(), AccountType = "Local", IsActive = true, LockoutEnabled = true };
+                res = await um.CreateAsync(user, req.Password ?? "");
+            }
             Check(res);
             await um.AddToRoleAsync(user, req.Role);
             await SetScopes(db, user.Id, req.Scopes);
-            Audit.Add(db, a, "Oluşturma", "Kullanıcı", user.Id, $"{user.UserName} · {Roles.Label(req.Role)}");
+            Audit.Add(db, a, "Oluşturma", "Kullanıcı", user.Id, $"{user.UserName} · {(user.AccountType == "Directory" ? "AD" : "yerel")} · {Roles.Label(req.Role)}");
             await db.SaveChangesAsync();
             return Results.Ok(new { user.Id });
         });
@@ -126,6 +142,7 @@ public static class PeopleEndpoints
             }
             if (!string.IsNullOrEmpty(req.NewPassword))
             {
+                if (user.AccountType == "Directory") throw AppException.Invalid("AD hesabının parolası AD'de yönetilir; buradan değiştirilemez.");
                 var token = await um.GeneratePasswordResetTokenAsync(user);
                 Check(await um.ResetPasswordAsync(user, token, req.NewPassword));
                 revoke = true;
@@ -141,7 +158,7 @@ public static class PeopleEndpoints
 
     static IQueryable<EmployeeDto> Project(AppDbContext db, IQueryable<Employee> q) => q.Select(e => new EmployeeDto(
         e.Id, e.CompanyId, e.Company!.Name, e.RegistryNo, e.FullName, e.Title, e.Department, e.Email, e.Source, e.IsActive,
-        db.Items.Count(i => i.EmployeeId == e.Id)));
+        db.Items.Count(i => i.EmployeeId == e.Id), e.DirectoryUserName, db.Users.Any(u => u.EmployeeId == e.Id)));
 
     static void Apply(Employee e, EmployeeSave r)
     {

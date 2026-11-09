@@ -1,0 +1,181 @@
+@page "/transferler/yeni"
+@inject Api Api
+@inject Toasts Toasts
+@inject NavigationManager Nav
+
+<PageTitle>Yeni transfer · Nurol Envanter</PageTitle>
+<div class="head">
+    <div class="t">
+        <div class="crumb"><a href="transferler">Transferler</a> / Yeni transfer</div>
+        <h1>Yeni transfer</h1>
+        <p>Taslak olarak kaydedilir; kalemler gönderme anında kaynak depodan düşer, hedefte teslim alınınca eklenir.</p>
+    </div>
+</div>
+
+<div class="grid g2e">
+    <section class="card">
+        <div class="ch"><h2>1. Depolar</h2></div>
+        <div class="cb form">
+            <label class="fld" for="t-src">Kaynak depo (gönderen)
+                <select id="t-src" value="@sourceId" @onchange="e => SourceChanged(e.Value)">
+                    <option value="">Seçin</option>
+                    @foreach (var w in warehouses) { <option value="@w.Id">@w.Name · @w.CompanyName</option> }
+                </select>
+                <span class="help">Yalnızca yetkili olduğunuz depolar listelenir.</span>
+            </label>
+            <label class="fld" for="t-tgt">Hedef depo (teslim alan)
+                <select id="t-tgt" value="@targetId" disabled="@(sourceId is null)" @onchange="e => targetId = G(e.Value)">
+                    <option value="">Seçin</option>
+                    @foreach (var w in Targets) { <option value="@w.Id">@w.Name</option> }
+                </select>
+                <span class="help">Aynı şirketin depoları. Hedef depo sorumlusu teslim alır.</span>
+            </label>
+            <label class="fld" for="t-note">Açıklama<textarea id="t-note" @bind="note" placeholder="Ör. sistem odası yenilemesi"></textarea></label>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="ch"><h2>2. Cihazlar</h2><span class="tag">@selected.Count seçili</span></div>
+        <div class="cb stack">
+            @if (sourceId is null) { <p class="muted" style="margin:0">Önce kaynak depoyu seçin. Yalnızca depoda hazır (zimmetsiz) cihazlar transfer edilebilir.</p> }
+            else
+            {
+                <div class="row"><div class="search" style="flex:1"><label class="sr" for="t-q">Cihaz ara</label><input id="t-q" @bind="q" @bind:after="LoadItems" placeholder="Etiket, seri no veya model" /></div><button type="button" class="btn sm" @onclick="LoadItems">Ara</button></div>
+                @if (items is { Count: 0 }) { <p class="muted" style="margin:0">Bu depoda transfer edilebilecek cihaz yok.</p> }
+                else if (items is not null)
+                {
+                    <div class="pick">
+                        @foreach (var c in items)
+                        {
+                            var on = selected.Contains(c.Id);
+                            <label class="@(on ? "on" : "")">
+                                <input type="checkbox" checked="@on" @onchange="e => { if ((bool)e.Value!) selected.Add(c.Id); else selected.Remove(c.Id); }" />
+                                <span><b class="mono">@c.Tag</b><span class="muted" style="display:block;font-size:12px">@c.ManufacturerName @c.ModelName · @(c.Serial ?? "seri no yok")</span></span>
+                                <span class="muted" style="font-size:12px">@c.LocationName</span>
+                            </label>
+                        }
+                    </div>
+                }
+            }
+        </div>
+    </section>
+
+    <section class="card" style="grid-column:1 / -1">
+        <div class="ch"><h2>3. Malzemeler (miktarlı)</h2>@if (sourceId is not null) { <button class="btn sm" type="button" @onclick="AddStock">+ Malzeme</button> }</div>
+        <div class="cb stack">
+            @if (stockLines.Count == 0) { <p class="muted" style="margin:0">Malzeme eklenmedi. Yalnızca cihaz transferi de yapılabilir.</p> }
+            @for (var i = 0; i < stockLines.Count; i++)
+            {
+                var idx = i; var l = stockLines[i];
+                var s = stock.FirstOrDefault(x => x.Id == l.StockItemId);
+                var have = s?.Balances.FirstOrDefault(b => b.WarehouseId == sourceId)?.Quantity;
+                <div class="row">
+                    <select class="sel-in" style="flex:2;min-width:200px" aria-label="Malzeme" value="@l.StockItemId" @onchange="e => stockLines[idx].StockItemId = G(e.Value)">
+                        <option value="">Malzeme seçin</option>
+                        @foreach (var x in stock) { <option value="@x.Id">@x.Name (@x.Unit)</option> }
+                    </select>
+                    <input class="sel-in" style="width:120px" inputmode="decimal" aria-label="Miktar" placeholder="Miktar" @bind="stockLines[idx].Qty" />
+                    <span class="muted" style="font-size:12.5px;min-width:140px">@(have is null ? "" : $"Kaynakta: {Fmt.Qty(have.Value)} {s!.Unit}")</span>
+                    <button class="btn sm danger" type="button" @onclick="() => stockLines.RemoveAt(idx)">Kaldır</button>
+                </div>
+            }
+            <ErrorNote Error="error" />
+            <div class="row" style="justify-content:flex-end">
+                <a class="btn" href="transferler">Vazgeç</a>
+                <button class="btn" type="button" disabled="@(busy || !CanSave)" @onclick="() => Save(false)">Taslak kaydet</button>
+                <button class="btn pri" type="button" disabled="@(busy || !CanSave)" @onclick="() => Save(true)">Kaydet ve gönder</button>
+            </div>
+        </div>
+    </section>
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "cihaz")] public Guid? CihazQ { get; set; }
+    class StockLine { public Guid? StockItemId; public string? Qty; }
+
+    List<WarehouseDto> warehouses = [];
+    List<WarehouseDto> allWarehouses = [];
+    List<ItemListRow>? items;
+    List<StockItemDto> stock = [];
+    List<StockLine> stockLines = [];
+    HashSet<Guid> selected = [];
+    Guid? sourceId, targetId;
+    string? q, note;
+    bool busy;
+    ApiException? error;
+
+    IEnumerable<WarehouseDto> Targets
+    {
+        get
+        {
+            var src = allWarehouses.FirstOrDefault(w => w.Id == sourceId);
+            return src is null ? [] : allWarehouses.Where(w => w.CompanyId == src.CompanyId && w.Id != src.Id);
+        }
+    }
+    bool CanSave => sourceId is not null && targetId is not null && (selected.Count > 0 || stockLines.Any(l => l.StockItemId is not null));
+    static Guid? G(object? v) => Guid.TryParse(v?.ToString(), out var g) ? g : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            warehouses = await Api.Get<List<WarehouseDto>>("api/warehouses");
+            // Hedef seçiminde yetki dışı depolar da görünmeli; sunucu yalnızca kapsamdakileri döner, bu yüzden şirket depoları ayrıca istenir.
+            allWarehouses = await Api.Get<List<WarehouseDto>>("api/warehouses/targets");
+            if (CihazQ is Guid id)
+            {
+                var d = await Api.Get<ItemDetail>($"api/items/{id}");
+                await SourceChanged(d.WarehouseId);
+                selected.Add(id);
+            }
+            else if (warehouses.Count == 1) await SourceChanged(warehouses[0].Id);
+        }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task SourceChanged(object? v)
+    {
+        sourceId = v is Guid g ? g : G(v);
+        targetId = null; selected.Clear(); stockLines.Clear(); items = null;
+        if (sourceId is null) return;
+        var src = allWarehouses.FirstOrDefault(w => w.Id == sourceId) ?? warehouses.First(w => w.Id == sourceId);
+        stock = await Api.Get<List<StockItemDto>>($"api/stock?companyId={src.CompanyId}");
+        await LoadItems();
+    }
+
+    async Task LoadItems()
+    {
+        if (sourceId is null) return;
+        var res = await Api.Get<PagedResult<ItemListRow>>($"api/items?status=InStock&warehouseId={sourceId}&pageSize=300" + (string.IsNullOrWhiteSpace(q) ? "" : "&q=" + Uri.EscapeDataString(q.Trim())));
+        var keep = items?.Where(i => selected.Contains(i.Id) && res.Items.All(r => r.Id != i.Id)) ?? [];
+        items = keep.Concat(res.Items).ToList();
+    }
+
+    void AddStock() => stockLines.Add(new StockLine());
+
+    async Task Save(bool send)
+    {
+        error = null;
+        var lines = new List<TransferStockLineSave>();
+        foreach (var l in stockLines.Where(l => l.StockItemId is not null))
+        {
+            if (!decimal.TryParse(l.Qty, System.Globalization.NumberStyles.Number, Fmt.Tr, out var qty) || qty <= 0)
+            { error = new ApiException("Malzeme miktarları sıfırdan büyük bir sayı olmalıdır."); return; }
+            lines.Add(new TransferStockLineSave(l.StockItemId!.Value, qty));
+        }
+        busy = true;
+        try
+        {
+            var d = await Api.Post<TransferDetail>("api/transfers", new TransferCreate(sourceId!.Value, targetId!.Value, selected.ToList(), lines, note));
+            if (send)
+            {
+                try { d = await Api.Post<TransferDetail>($"api/transfers/{d.Header.Id}/send", null); Toasts.Show($"{d.Header.No} gönderildi"); }
+                catch (ApiException ex) { Toasts.Show($"{d.Header.No} taslak kaydedildi ama gönderilemedi: {ex.Message}"); }
+            }
+            else Toasts.Show($"{d.Header.No} taslak olarak kaydedildi");
+            Nav.NavigateTo($"transferler/{d.Header.Id}");
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

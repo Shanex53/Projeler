@@ -30,6 +30,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<Document> Documents => Set<Document>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<Counter> Counters => Set<Counter>();
+    public DbSet<Transfer> Transfers => Set<Transfer>();
+    public DbSet<TransferLine> TransferLines => Set<TransferLine>();
+    public DbSet<SavedView> SavedViews => Set<SavedView>();
+    public DbSet<DirectoryCompanyRule> DirectoryRules => Set<DirectoryCompanyRule>();
+    public DbSet<DirectorySyncRun> DirectorySyncRuns => Set<DirectorySyncRun>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -165,5 +170,40 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<Document>(e => e.HasIndex(x => new { x.AssignmentId, x.Kind, x.Version }).IsUnique());
         b.Entity<AuditEvent>().HasIndex(x => x.At);
         b.Entity<Counter>().HasKey(x => x.Name);
+
+        b.Entity<AppUser>().HasIndex(u => u.DirectoryId).IsUnique().HasFilter("directory_id IS NOT NULL");
+        b.Entity<Employee>().HasIndex(e => e.DirectoryId).IsUnique().HasFilter("directory_id IS NOT NULL");
+
+        b.Entity<Transfer>(e =>
+        {
+            e.HasIndex(x => x.No).IsUnique();
+            e.HasIndex(x => new { x.Status, x.TargetWarehouseId });
+            e.Property(x => x.Version).IsRowVersion();
+            e.HasOne(x => x.SourceWarehouse).WithMany().HasForeignKey(x => x.SourceWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.TargetWarehouse).WithMany().HasForeignKey(x => x.TargetWarehouseId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.Lines).WithOne().HasForeignKey(l => l.TransferId).OnDelete(DeleteBehavior.Cascade);
+            e.ToTable(t => t.HasCheckConstraint("ck_transfer_distinct_warehouses", "source_warehouse_id <> target_warehouse_id"));
+        });
+        b.Entity<TransferLine>(e =>
+        {
+            e.HasIndex(x => x.ItemId);
+            e.Property(x => x.Quantity).HasPrecision(14, 3);
+            e.HasOne(x => x.Item).WithMany().OnDelete(DeleteBehavior.Restrict);
+            e.HasOne(x => x.StockItem).WithMany().OnDelete(DeleteBehavior.Restrict);
+            e.ToTable(t => t.HasCheckConstraint("ck_transfer_line_kind",
+                "(item_id IS NOT NULL AND stock_item_id IS NULL AND quantity IS NULL) OR (item_id IS NULL AND stock_item_id IS NOT NULL AND quantity > 0)"));
+        });
+        b.Entity<SavedView>(e =>
+        {
+            e.HasIndex(x => new { x.UserId, x.Page, x.Name }).IsUnique();
+            e.Property(x => x.State).HasColumnType("jsonb");
+            e.Property(x => x.Name).HasMaxLength(80);
+        });
+        b.Entity<DirectoryCompanyRule>().HasOne(x => x.Company).WithMany().OnDelete(DeleteBehavior.Restrict);
+        b.Entity<DirectorySyncRun>(e =>
+        {
+            e.HasIndex(x => x.StartedAt);
+            e.Property(x => x.Changes).HasColumnType("jsonb");
+        });
     }
 }

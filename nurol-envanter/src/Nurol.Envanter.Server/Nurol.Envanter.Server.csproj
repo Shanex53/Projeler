@@ -11,6 +11,7 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.14" />
     <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
     <PackageReference Include="AWSSDK.S3" Version="4.0.104.11" />
+    <PackageReference Include="System.DirectoryServices.Protocols" Version="10.0.14" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nurol.Envanter.Shared\Nurol.Envanter.Shared.csproj" />

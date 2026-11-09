@@ -230,6 +230,10 @@ namespace Nurol.Envanter.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("concurrency_stamp");
 
+                    b.Property<string>("DirectoryId")
+                        .HasColumnType("text")
+                        .HasColumnName("directory_id");
+
                     b.Property<string>("DisplayName")
                         .IsRequired()
                         .HasColumnType("text")
@@ -243,6 +247,10 @@ namespace Nurol.Envanter.Server.Data.Migrations
                     b.Property<bool>("EmailConfirmed")
                         .HasColumnType("boolean")
                         .HasColumnName("email_confirmed");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("employee_id");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("boolean")
@@ -297,6 +305,11 @@ namespace Nurol.Envanter.Server.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_asp_net_users");
+
+                    b.HasIndex("DirectoryId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_asp_net_users_directory_id")
+                        .HasFilter("directory_id IS NOT NULL");
 
                     b.HasIndex("NormalizedEmail")
                         .HasDatabaseName("EmailIndex");
@@ -594,6 +607,113 @@ namespace Nurol.Envanter.Server.Data.Migrations
                     b.ToTable("counters", (string)null);
                 });
 
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.DirectoryCompanyRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Attribute")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("attribute");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("MatchType")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("match_type");
+
+                    b.Property<int>("Priority")
+                        .HasColumnType("integer")
+                        .HasColumnName("priority");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id")
+                        .HasName("pk_directory_rules");
+
+                    b.HasIndex("CompanyId")
+                        .HasDatabaseName("ix_directory_rules_company_id");
+
+                    b.ToTable("directory_rules", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.DirectorySyncRun", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Changes")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("changes");
+
+                    b.Property<int>("Created")
+                        .HasColumnType("integer")
+                        .HasColumnName("created");
+
+                    b.Property<int>("Deactivated")
+                        .HasColumnType("integer")
+                        .HasColumnName("deactivated");
+
+                    b.Property<DateTimeOffset?>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<int>("Found")
+                        .HasColumnType("integer")
+                        .HasColumnName("found");
+
+                    b.Property<string>("Message")
+                        .HasColumnType("text")
+                        .HasColumnName("message");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Trigger")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("trigger");
+
+                    b.Property<int>("Unmatched")
+                        .HasColumnType("integer")
+                        .HasColumnName("unmatched");
+
+                    b.Property<int>("Updated")
+                        .HasColumnType("integer")
+                        .HasColumnName("updated");
+
+                    b.Property<string>("UserName")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("user_name");
+
+                    b.HasKey("Id")
+                        .HasName("pk_directory_sync_runs");
+
+                    b.HasIndex("StartedAt")
+                        .HasDatabaseName("ix_directory_sync_runs_started_at");
+
+                    b.ToTable("directory_sync_runs", (string)null);
+                });
+
             modelBuilder.Entity("Nurol.Envanter.Server.Data.Document", b =>
                 {
                     b.Property<Guid>("Id")
@@ -671,6 +791,26 @@ namespace Nurol.Envanter.Server.Data.Migrations
                         .HasColumnType("text")
                         .HasColumnName("department");
 
+                    b.Property<string>("DirectoryCompanyText")
+                        .HasColumnType("text")
+                        .HasColumnName("directory_company_text");
+
+                    b.Property<string>("DirectoryDn")
+                        .HasColumnType("text")
+                        .HasColumnName("directory_dn");
+
+                    b.Property<string>("DirectoryId")
+                        .HasColumnType("text")
+                        .HasColumnName("directory_id");
+
+                    b.Property<DateTimeOffset?>("DirectorySyncedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("directory_synced_at");
+
+                    b.Property<string>("DirectoryUserName")
+                        .HasColumnType("text")
+                        .HasColumnName("directory_user_name");
+
                     b.Property<string>("Email")
                         .HasColumnType("text")
                         .HasColumnName("email");
@@ -698,6 +838,11 @@ namespace Nurol.Envanter.Server.Data.Migrations
 
                     b.HasKey("Id")
                         .HasName("pk_employees");
+
+                    b.HasIndex("DirectoryId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_employees_directory_id")
+                        .HasFilter("directory_id IS NOT NULL");
 
                     b.HasIndex("FullName")
                         .HasDatabaseName("ix_employees_full_name");
@@ -1038,6 +1183,48 @@ namespace Nurol.Envanter.Server.Data.Migrations
                     b.ToTable("manufacturers", (string)null);
                 });
 
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.SavedView", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Page")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("page");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("state");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_saved_views");
+
+                    b.HasIndex("UserId", "Page", "Name")
+                        .IsUnique()
+                        .HasDatabaseName("ix_saved_views_user_id_page_name");
+
+                    b.ToTable("saved_views", (string)null);
+                });
+
             modelBuilder.Entity("Nurol.Envanter.Server.Data.ServerSession", b =>
                 {
                     b.Property<string>("Id")
@@ -1227,6 +1414,141 @@ namespace Nurol.Envanter.Server.Data.Migrations
                         .HasDatabaseName("ix_stock_movements_stock_item_id_at");
 
                     b.ToTable("stock_movements", (string)null);
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.Transfer", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<string>("CancelledBy")
+                        .HasColumnType("text")
+                        .HasColumnName("cancelled_by");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("CreatedBy")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("No")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("no");
+
+                    b.Property<string>("Note")
+                        .HasColumnType("text")
+                        .HasColumnName("note");
+
+                    b.Property<DateTimeOffset?>("ReceivedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("received_at");
+
+                    b.Property<string>("ReceivedBy")
+                        .HasColumnType("text")
+                        .HasColumnName("received_by");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<string>("SentBy")
+                        .HasColumnType("text")
+                        .HasColumnName("sent_by");
+
+                    b.Property<Guid>("SourceWarehouseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_warehouse_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("TargetWarehouseId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("target_warehouse_id");
+
+                    b.Property<uint>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.HasKey("Id")
+                        .HasName("pk_transfers");
+
+                    b.HasIndex("No")
+                        .IsUnique()
+                        .HasDatabaseName("ix_transfers_no");
+
+                    b.HasIndex("SourceWarehouseId")
+                        .HasDatabaseName("ix_transfers_source_warehouse_id");
+
+                    b.HasIndex("TargetWarehouseId")
+                        .HasDatabaseName("ix_transfers_target_warehouse_id");
+
+                    b.HasIndex("Status", "TargetWarehouseId")
+                        .HasDatabaseName("ix_transfers_status_target_warehouse_id");
+
+                    b.ToTable("transfers", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_transfer_distinct_warehouses", "source_warehouse_id <> target_warehouse_id");
+                        });
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.TransferLine", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid?>("ItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("item_id");
+
+                    b.Property<decimal?>("Quantity")
+                        .HasPrecision(14, 3)
+                        .HasColumnType("numeric(14,3)")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid?>("StockItemId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stock_item_id");
+
+                    b.Property<Guid>("TransferId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("transfer_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_transfer_lines");
+
+                    b.HasIndex("ItemId")
+                        .HasDatabaseName("ix_transfer_lines_item_id");
+
+                    b.HasIndex("StockItemId")
+                        .HasDatabaseName("ix_transfer_lines_stock_item_id");
+
+                    b.HasIndex("TransferId")
+                        .HasDatabaseName("ix_transfer_lines_transfer_id");
+
+                    b.ToTable("transfer_lines", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_transfer_line_kind", "(item_id IS NOT NULL AND stock_item_id IS NULL AND quantity IS NULL) OR (item_id IS NULL AND stock_item_id IS NOT NULL AND quantity > 0)");
+                        });
                 });
 
             modelBuilder.Entity("Nurol.Envanter.Server.Data.UniqueFieldValue", b =>
@@ -1440,6 +1762,18 @@ namespace Nurol.Envanter.Server.Data.Migrations
                     b.Navigation("Item");
                 });
 
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.DirectoryCompanyRule", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_directory_rules_companies_company_id");
+
+                    b.Navigation("Company");
+                });
+
             modelBuilder.Entity("Nurol.Envanter.Server.Data.Document", b =>
                 {
                     b.HasOne("Nurol.Envanter.Server.Data.Assignment", "Assignment")
@@ -1605,6 +1939,53 @@ namespace Nurol.Envanter.Server.Data.Migrations
                     b.Navigation("Warehouse");
                 });
 
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.Transfer", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.Warehouse", "SourceWarehouse")
+                        .WithMany()
+                        .HasForeignKey("SourceWarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfers_warehouses_source_warehouse_id");
+
+                    b.HasOne("Nurol.Envanter.Server.Data.Warehouse", "TargetWarehouse")
+                        .WithMany()
+                        .HasForeignKey("TargetWarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfers_warehouses_target_warehouse_id");
+
+                    b.Navigation("SourceWarehouse");
+
+                    b.Navigation("TargetWarehouse");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.TransferLine", b =>
+                {
+                    b.HasOne("Nurol.Envanter.Server.Data.InventoryItem", "Item")
+                        .WithMany()
+                        .HasForeignKey("ItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transfer_lines_items_item_id");
+
+                    b.HasOne("Nurol.Envanter.Server.Data.StockItem", "StockItem")
+                        .WithMany()
+                        .HasForeignKey("StockItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_transfer_lines_stock_items_stock_item_id");
+
+                    b.HasOne("Nurol.Envanter.Server.Data.Transfer", null)
+                        .WithMany("Lines")
+                        .HasForeignKey("TransferId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_transfer_lines_transfers_transfer_id");
+
+                    b.Navigation("Item");
+
+                    b.Navigation("StockItem");
+                });
+
             modelBuilder.Entity("Nurol.Envanter.Server.Data.UserScope", b =>
                 {
                     b.HasOne("Nurol.Envanter.Server.Data.Company", "Company")
@@ -1663,6 +2044,11 @@ namespace Nurol.Envanter.Server.Data.Migrations
             modelBuilder.Entity("Nurol.Envanter.Server.Data.StockItem", b =>
                 {
                     b.Navigation("Balances");
+                });
+
+            modelBuilder.Entity("Nurol.Envanter.Server.Data.Transfer", b =>
+                {
+                    b.Navigation("Lines");
                 });
 
             modelBuilder.Entity("Nurol.Envanter.Server.Data.Warehouse", b =>

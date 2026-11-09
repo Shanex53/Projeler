@@ -21,7 +21,7 @@ else
         <a class="kpi" href="envanter?durum=InStock"><span class="l">Depoda</span><span class="v">@d.InStock.ToString("N0", Fmt.Tr)</span><span class="s">Zimmete hazır</span></a>
         <a class="kpi" href="envanter?durum=Assigned"><span class="l">Zimmetli</span><span class="v">@d.Assigned.ToString("N0", Fmt.Tr)</span><span class="s">Personelde</span></a>
         <a class="kpi" href="envanter?durum=InMaintenance"><span class="l">Bakımda</span><span class="v">@d.InMaintenance.ToString("N0", Fmt.Tr)</span><span class="s">Serviste veya onarımda</span></a>
-        <a class="kpi" href="stok"><span class="l">Kritik stok</span><span class="v">@d.LowStock.Count</span><span class="s">En az seviyenin altında</span></a>
+        <a class="kpi @(d.PendingTransfers > 0 ? "" : "")" href="transferler?bekleyen=1"><span class="l">Bekleyen transfer</span><span class="v">@d.PendingTransfers</span><span class="s">@(d.InTransit > 0 ? $"{d.InTransit} cihaz yolda" : "Yolda cihaz yok")</span></a>
         <a class="kpi @(d.MissingSignedDocuments > 0 ? "alert" : "")" href="zimmetler?eksik=1"><span class="l">İmzalı evrak eksik</span><span class="v">@d.MissingSignedDocuments</span><span class="s">@(d.OldestMissingSince is { } o ? "En eskisi " + Fmt.Ago(o) : "Eksik evrak yok")</span></a>
     </div>
 
@@ -105,5 +105,5 @@ else
     }
 
     static string Pct(int v, int max) => (v * 100.0 / max).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture) + "%";
-    static string Cls(string t) => t switch { "Zimmet" => "p-info", "İade" => "p-ok", "Giriş" => "p-ok", "Sarf çıkışı" => "p-mute", _ => "p-warn" };
+    static string Cls(string t) => t switch { "Zimmet" => "p-info", "İade" => "p-ok", "Giriş" => "p-ok", "Sarf çıkışı" => "p-mute", "Transfer gönderildi" or "Transfer teslim alındı" or "Transfer çıkışı" or "Transfer girişi" => "p-move", _ => "p-warn" };
 }

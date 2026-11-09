@@ -160,6 +160,28 @@ public static class DevSeeder
         await Mv(sim, ank, StockMovementType.In, 14, note: "Açılış bakiyesi");
         await Mv(sim, ist, StockMovementType.In, 3, note: "Açılış bakiyesi");
 
+        // Gölbaşı'ndan Ankara'ya gönderilmiş, teslim alınmayı bekleyen örnek transfer.
+        var sw = await db.Items.FirstAsync(x => x.Serial == "FOC2741Y0QS");
+        var trf = new Transfer
+        {
+            Id = Guid.NewGuid(), No = await Counters.DocumentNoAsync(db, "TRF", DateTimeOffset.UtcNow), Status = TransferStatus.Sent, CompanyId = ins.Id,
+            SourceWarehouseId = glb.Id, TargetWarehouseId = ank.Id, Note = "Sistem odası yenilemesi", CreatedAt = DateTimeOffset.UtcNow.AddHours(-3),
+            CreatedBy = sys.UserName, SentAt = DateTimeOffset.UtcNow.AddHours(-2), SentBy = sys.UserName
+        };
+        trf.Lines.Add(new TransferLine { Id = Guid.NewGuid(), ItemId = sw.Id });
+        trf.Lines.Add(new TransferLine { Id = Guid.NewGuid(), StockItemId = kbl.Id, Quantity = 50 });
+        db.Transfers.Add(trf);
+        sw.Status = ItemStatus.InTransit;
+        ItemEndpoints.Event(db, sw.Id, "Transfer", $"Transfere gönderildi: {ank.Name}", sys.UserName, trf.No);
+        var left = await StockEndpoints.TryTakeBalance(db, kbl.Id, glb.Id, 50);
+        db.StockMovements.Add(new StockMovement { Id = Guid.NewGuid(), No = await Counters.DocumentNoAsync(db, "STK", DateTimeOffset.UtcNow), At = DateTimeOffset.UtcNow,
+            Type = StockMovementType.TransferOut, StockItemId = kbl.Id, WarehouseId = glb.Id, Quantity = -50, BalanceAfter = left!.Value, Project = trf.No, Note = "Transfer çıkışı", UserName = sys.UserName });
+
+        // AD şirket eşleme örnekleri (AD bağlantısı yapılandırıldığında kullanılır).
+        db.DirectoryRules.Add(new DirectoryCompanyRule { Id = Guid.NewGuid(), Priority = 10, Attribute = "company", MatchType = DirectoryMatch.Equals, Value = "Nurol İnşaat", CompanyId = ins.Id });
+        db.DirectoryRules.Add(new DirectoryCompanyRule { Id = Guid.NewGuid(), Priority = 20, Attribute = "dn", MatchType = DirectoryMatch.DnEndsWith, Value = "OU=Makina,DC=nurol,DC=local", CompanyId = mak.Id });
+        await db.SaveChangesAsync();
+
         async Task U(string user, string name, string role, params (Guid company, Guid? wh)[] scopes)
         {
             if (await users.FindByNameAsync(user) is not null) return;

@@ -2,7 +2,7 @@ namespace Nurol.Envanter.Shared;
 
 public enum ItemStatus { InStock = 0, Assigned = 1, InTransit = 2, InMaintenance = 3, Retired = 4 }
 public enum FieldType { Text = 0, Number = 1, Date = 2, Select = 3, Boolean = 4 }
-public enum StockMovementType { In = 0, Out = 1, Adjust = 2 }
+public enum StockMovementType { In = 0, Out = 1, Adjust = 2, TransferOut = 3, TransferIn = 4 }
 public enum AssignmentKind { Issue = 0, Return = 1 }
 public enum DocumentKind { Generated = 0, Signed = 1 }
 public enum EmployeeSource { Manual = 0, Directory = 1 }
@@ -52,6 +52,8 @@ public static class Labels
         StockMovementType.In => "Giriş",
         StockMovementType.Out => "Sarf çıkışı",
         StockMovementType.Adjust => "Düzeltme",
+        StockMovementType.TransferOut => "Transfer çıkışı",
+        StockMovementType.TransferIn => "Transfer girişi",
         _ => t.ToString()
     };
 }
@@ -62,7 +64,7 @@ public record ApiError(string Message, Dictionary<string, string>? Errors = null
 public record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page, int PageSize);
 
 // ---- Kimlik ----
-public record LoginRequest(string UserName, string Password);
+public record LoginRequest(string UserName, string Password, string? AccountType = null);
 public record ScopeDto(Guid CompanyId, string CompanyName, Guid? WarehouseId, string? WarehouseName);
 public record MeDto(string UserName, string DisplayName, string AccountType, IReadOnlyList<string> Roles, IReadOnlyList<ScopeDto> Scopes, bool CanWrite, bool IsSystemAdmin);
 
@@ -127,7 +129,7 @@ public record StockMovementRequest(Guid StockItemId, Guid WarehouseId, StockMove
 public record StockMovementDto(Guid Id, string No, DateTimeOffset At, StockMovementType Type, string StockItemName, string Unit, string WarehouseName, decimal Quantity, decimal BalanceAfter, string? EmployeeName, string? Project, string? Note, string UserName);
 
 // ---- Personel ----
-public record EmployeeDto(Guid Id, Guid CompanyId, string CompanyName, string? RegistryNo, string FullName, string? Title, string? Department, string? Email, EmployeeSource Source, bool IsActive, int OpenItemCount);
+public record EmployeeDto(Guid Id, Guid CompanyId, string CompanyName, string? RegistryNo, string FullName, string? Title, string? Department, string? Email, EmployeeSource Source, bool IsActive, int OpenItemCount, string? DirectoryUserName = null, bool HasAccount = false);
 public record EmployeeSave(Guid CompanyId, string? RegistryNo, string FullName, string? Title, string? Department, string? Email, bool IsActive);
 public record EmployeeDetail(EmployeeDto Employee, IReadOnlyList<ItemListRow> OpenItems, IReadOnlyList<AssignmentListRow> Assignments, IReadOnlyList<StockMovementDto> Consumption);
 
@@ -140,15 +142,16 @@ public record AssignmentDetail(AssignmentListRow Header, string? Note, IReadOnly
 public record DocumentDto(Guid Id, Guid AssignmentId, string AssignmentNo, DocumentKind Kind, int Version, string FileName, string ContentType, long Size, string Sha256, DateTimeOffset At, string UserName);
 
 // ---- Kullanıcılar ----
-public record UserDto(string Id, string UserName, string DisplayName, string AccountType, bool IsActive, IReadOnlyList<string> Roles, IReadOnlyList<ScopeDto> Scopes, DateTimeOffset? LastLoginAt);
-public record UserCreate(string UserName, string DisplayName, string Password, string Role, IReadOnlyList<ScopeSave> Scopes);
+public record UserDto(string Id, string UserName, string DisplayName, string AccountType, bool IsActive, IReadOnlyList<string> Roles, IReadOnlyList<ScopeDto> Scopes, DateTimeOffset? LastLoginAt, Guid? EmployeeId = null);
+/// <summary>AccountType "Local" için parola gerekir; "Directory" için AD'den gelmiş personel (EmployeeId) seçilir, parola AD'dedir.</summary>
+public record UserCreate(string UserName, string DisplayName, string? Password, string Role, IReadOnlyList<ScopeSave> Scopes, string AccountType = "Local", Guid? EmployeeId = null);
 public record UserUpdate(string DisplayName, bool IsActive, string Role, IReadOnlyList<ScopeSave> Scopes, string? NewPassword);
 public record ScopeSave(Guid CompanyId, Guid? WarehouseId);
 
 // ---- Genel bakış ----
 public record DashboardDto(
     int TotalItems, int InStock, int Assigned, int InMaintenance, int InTransit, int Retired,
-    int MissingSignedDocuments, DateTimeOffset? OldestMissingSince,
+    int MissingSignedDocuments, DateTimeOffset? OldestMissingSince, int PendingTransfers,
     IReadOnlyList<WarehouseBreakdown> Warehouses, IReadOnlyList<LowStockRow> LowStock, IReadOnlyList<ActivityRow> Activity);
 public record WarehouseBreakdown(Guid WarehouseId, string Name, int InStock, int Assigned, int InMaintenance, int InTransit);
 public record LowStockRow(Guid StockItemId, string Name, string Unit, string WarehouseName, decimal Quantity, decimal MinLevel);

@@ -1,0 +1,144 @@
+@page "/transferler/{Id:guid}"
+@inject Api Api
+@inject Toasts Toasts
+
+<PageTitle>@(d?.Header.No ?? "Transfer") · Nurol Envanter</PageTitle>
+@if (d is null)
+{
+    @if (error is not null) { <ErrorNote Error="error" /> } else { <div class="loading">Yükleniyor…</div> }
+}
+else
+{
+    var h = d.Header;
+    <div class="head">
+        <div class="t">
+            <div class="crumb"><a href="transferler">Transferler</a> / @TransferLabels.Status(h.Status)</div>
+            <h1 style="font-family:var(--mono)">@h.No</h1>
+            <p>@h.SourceWarehouseName → @h.TargetWarehouseName</p>
+        </div>
+        @if (h.CanSend)
+        {
+            <button class="btn danger" disabled="@busy" @onclick='() => Run("cancel", "Transfer iptal edildi")'>Taslağı iptal et</button>
+            <button class="btn pri" disabled="@busy" @onclick='() => Run("send", "Transfer gönderildi")'>Gönder</button>
+        }
+        @if (h.CanReceive) { <button class="btn pri" disabled="@busy" @onclick="() => receiving = true">Teslim al</button> }
+    </div>
+    <ErrorNote Error="error" />
+
+    <div class="grid g2">
+        <div class="stack">
+            <section class="card">
+                <div class="ch"><h2>Cihazlar</h2><span class="tag">@d.Items.Count</span></div>
+                <div class="tw">
+                    <table>
+                        <thead><tr><th>Etiket</th><th>Cihaz</th><th>Seri no</th><th>Durum</th></tr></thead>
+                        <tbody>
+                            @if (d.Items.Count == 0) { <tr><td colspan="4" class="empty">Cihaz yok.</td></tr> }
+                            @foreach (var i in d.Items)
+                            {
+                                <tr><td class="mono"><a href="envanter/@i.ItemId">@i.Tag</a></td><td>@i.Description</td><td class="mono">@(i.Serial ?? "—")</td><td><StatusPill Status="i.Status" /></td></tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+            <section class="card">
+                <div class="ch"><h2>Malzemeler</h2><span class="tag">@d.StockLines.Count</span></div>
+                <div class="tw">
+                    <table>
+                        <thead><tr><th>Malzeme</th><th class="right">Miktar</th></tr></thead>
+                        <tbody>
+                            @if (d.StockLines.Count == 0) { <tr><td colspan="2" class="empty">Malzeme yok.</td></tr> }
+                            @foreach (var s in d.StockLines) { <tr><td>@s.Name</td><td class="num right">@Fmt.Qty(s.Quantity) @s.Unit</td></tr> }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+        <section class="card">
+            <div class="ch"><h2>Aşamalar</h2></div>
+            <div class="cb stack">
+                <TransferSteps Status="h.Status" />
+                <ol class="timeline">
+                    <li><b>Taslak oluşturuldu</b><span class="muted" style="font-size:12.5px">@Fmt.DateTime(h.CreatedAt) · @h.CreatedBy</span></li>
+                    @if (h.SentAt is not null) { <li style="--accent:var(--move)"><b>Gönderildi</b><span class="muted" style="font-size:12.5px">@Fmt.DateTime(h.SentAt) · @d.SentBy</span></li> }
+                    @if (h.ReceivedAt is not null) { <li style="--accent:var(--ok)"><b>Teslim alındı</b><span class="muted" style="font-size:12.5px">@Fmt.DateTime(h.ReceivedAt) · @d.ReceivedBy</span></li> }
+                    @if (h.Status == TransferStatus.Cancelled) { <li style="--accent:var(--muted)"><b>İptal edildi</b><span class="muted" style="font-size:12.5px">@d.CancelledBy</span></li> }
+                </ol>
+                @if (d.Note is not null) { <p style="margin:0;white-space:pre-line"><b>Açıklama:</b> @d.Note</p> }
+                @if (h.Status == TransferStatus.Sent && !h.CanReceive) { <p class="note" style="margin:0">Teslim alma hedef depo sorumlusu tarafından yapılır.</p> }
+                @if (h.Status == TransferStatus.Draft && !h.CanSend) { <p class="note" style="margin:0">Gönderme kaynak depo sorumlusu tarafından yapılır.</p> }
+            </div>
+        </section>
+    </div>
+}
+
+@if (receiving && d is not null)
+{
+    <Modal Title="Teslim al" OnClose="() => receiving = false">
+        <ChildContent>
+            <form class="form" id="rcv" @onsubmit="Receive">
+                <p style="margin:0">@d.Items.Count cihaz ve @d.StockLines.Count malzeme <b>@d.Header.TargetWarehouseName</b> deposuna eklenecek. Kısmi teslim yoktur; tüm kalemlerin geldiğini kontrol edin.</p>
+                @if (d.Items.Count > 0)
+                {
+                    <label class="fld" for="rcv-loc">Cihazların konacağı lokasyon
+                        <select id="rcv-loc" value="@locationId" @onchange="e => locationId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                            <option value="">Belirtilmedi</option>
+                            @foreach (var l in locations) { <option value="@l.Id">@l.Name</option> }
+                        </select>
+                    </label>
+                }
+                <label class="fld" for="rcv-note">Teslim notu<input id="rcv-note" @bind="receiveNote" /></label>
+                <ErrorNote Error="error" />
+            </form>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => receiving = false">Vazgeç</button>
+            <button class="btn pri" type="submit" form="rcv" disabled="@busy">Teslim aldım</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+    TransferDetail? d;
+    ApiException? error;
+    bool busy, receiving;
+    Guid? locationId;
+    string? receiveNote;
+    List<LocationDto> locations = [];
+
+    protected override async Task OnParametersSetAsync() => await Load();
+
+    async Task Load()
+    {
+        try
+        {
+            d = await Api.Get<TransferDetail>($"api/transfers/{Id}");
+            if (d.Header.CanReceive)
+                locations = (await Api.Get<List<WarehouseDto>>("api/warehouses")).FirstOrDefault(w => w.Id == d.TargetWarehouseId)?.Locations.ToList() ?? [];
+        }
+        catch (ApiException ex) { error = ex; }
+    }
+
+    async Task Run(string action, string done)
+    {
+        busy = true; error = null;
+        try { d = await Api.Post<TransferDetail>($"api/transfers/{Id}/{action}", null); Toasts.Show(done); }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+
+    async Task Receive()
+    {
+        busy = true; error = null;
+        try
+        {
+            d = await Api.Post<TransferDetail>($"api/transfers/{Id}/receive", new TransferReceive(locationId, receiveNote));
+            receiving = false;
+            Toasts.Show("Transfer teslim alındı");
+        }
+        catch (ApiException ex) { error = ex; }
+        finally { busy = false; }
+    }
+}

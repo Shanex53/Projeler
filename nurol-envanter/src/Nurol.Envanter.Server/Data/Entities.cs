@@ -10,6 +10,9 @@ public class AppUser : IdentityUser
     public string AccountType { get; set; } = "Local";
     public bool IsActive { get; set; } = true;
     public DateTimeOffset? LastLoginAt { get; set; }
+    /// <summary>AD hesabı için kalıcı dizin kimliği (alan adı + objectGUID).</summary>
+    public string? DirectoryId { get; set; }
+    public Guid? EmployeeId { get; set; }
     public List<UserScope> Scopes { get; set; } = [];
 }
 
@@ -222,6 +225,13 @@ public class Employee
     public string? Email { get; set; }
     public EmployeeSource Source { get; set; }
     public bool IsActive { get; set; } = true;
+    /// <summary>Kalıcı dizin kimliği: alan adı + objectGUID. Ad veya kullanıcı adı değişse de aynı kalır.</summary>
+    public string? DirectoryId { get; set; }
+    public string? DirectoryUserName { get; set; }
+    public string? DirectoryDn { get; set; }
+    /// <summary>AD'deki serbest metin şirket adı. Yalnızca bilgi içindir, yetki vermez.</summary>
+    public string? DirectoryCompanyText { get; set; }
+    public DateTimeOffset? DirectorySyncedAt { get; set; }
 }
 
 public class Assignment
@@ -287,4 +297,79 @@ public class Counter
 {
     public string Name { get; set; } = "";
     public long Value { get; set; }
+}
+
+public class Transfer
+{
+    public Guid Id { get; set; }
+    public string No { get; set; } = "";
+    public TransferStatus Status { get; set; }
+    public Guid CompanyId { get; set; }
+    public Guid SourceWarehouseId { get; set; }
+    public Warehouse? SourceWarehouse { get; set; }
+    public Guid TargetWarehouseId { get; set; }
+    public Warehouse? TargetWarehouse { get; set; }
+    public string? Note { get; set; }
+    public DateTimeOffset CreatedAt { get; set; }
+    public string CreatedBy { get; set; } = "";
+    public DateTimeOffset? SentAt { get; set; }
+    public string? SentBy { get; set; }
+    public DateTimeOffset? ReceivedAt { get; set; }
+    public string? ReceivedBy { get; set; }
+    public DateTimeOffset? CancelledAt { get; set; }
+    public string? CancelledBy { get; set; }
+    public uint Version { get; set; }
+    public List<TransferLine> Lines { get; set; } = [];
+}
+
+/// <summary>Tekil cihaz (ItemId) veya miktarlı malzeme (StockItemId + Quantity) satırı.</summary>
+public class TransferLine
+{
+    public Guid Id { get; set; }
+    public Guid TransferId { get; set; }
+    public Guid? ItemId { get; set; }
+    public InventoryItem? Item { get; set; }
+    public Guid? StockItemId { get; set; }
+    public StockItem? StockItem { get; set; }
+    public decimal? Quantity { get; set; }
+}
+
+public class SavedView
+{
+    public Guid Id { get; set; }
+    public string UserId { get; set; } = "";
+    public string Page { get; set; } = "";
+    public string Name { get; set; } = "";
+    public string State { get; set; } = "{}";
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+/// <summary>AD kaydını şirkete eşleyen kural. AD'deki serbest metin tek başına yetki vermez; yönetici kuralı tanımlar.</summary>
+public class DirectoryCompanyRule
+{
+    public Guid Id { get; set; }
+    public int Priority { get; set; }
+    public string Attribute { get; set; } = "company";
+    public string MatchType { get; set; } = DirectoryMatch.Equals;
+    public string Value { get; set; } = "";
+    public Guid CompanyId { get; set; }
+    public Company? Company { get; set; }
+}
+
+public class DirectorySyncRun
+{
+    public Guid Id { get; set; }
+    public DateTimeOffset StartedAt { get; set; }
+    public DateTimeOffset? FinishedAt { get; set; }
+    /// <summary>Çalışıyor, Başarılı, Başarısız, Önizleme</summary>
+    public string Status { get; set; } = "";
+    public string Trigger { get; set; } = "";
+    public string UserName { get; set; } = "";
+    public int Found { get; set; }
+    public int Created { get; set; }
+    public int Updated { get; set; }
+    public int Deactivated { get; set; }
+    public int Unmatched { get; set; }
+    public string? Message { get; set; }
+    public string Changes { get; set; } = "[]";
 }

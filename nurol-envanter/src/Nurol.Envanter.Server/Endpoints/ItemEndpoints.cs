@@ -100,7 +100,7 @@ public static class ItemEndpoints
             a.RequireWriteWarehouse(item.WarehouseId);
             if (req.Version is uint v) db.Entry(item).Property(x => x.Version).OriginalValue = v;
             if (req.WarehouseId != item.WarehouseId)
-                throw AppException.Conflict("Depo değişikliği transfer ile yapılır (Aşama 2). Lokasyonu bu ekrandan değiştirebilirsiniz.");
+                throw AppException.Conflict("Depo değişikliği transfer ile yapılır (Transferler sayfası). Lokasyonu bu ekrandan değiştirebilirsiniz.");
             var model = await db.AssetModels.Include(m => m.Category).FirstOrDefaultAsync(m => m.Id == req.AssetModelId)
                 ?? throw AppException.Invalid("Geçerli bir model seçin.");
             if (model.CategoryId != item.CategoryId) throw AppException.Conflict("Kaydın kategorisi değiştirilemez; etiket kategoriye bağlıdır.");

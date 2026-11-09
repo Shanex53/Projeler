@@ -55,8 +55,16 @@ public static class DashboardEndpoints
                 .Concat(recentStock.Select(m => new ActivityRow(m.At, Labels.Movement(m.Type), m.No, $"{m.Name}, {Math.Abs(m.Quantity):0.###} {m.Unit} · {m.Wh}", m.UserName)))
                 .OrderByDescending(x => x.At).Take(10).ToList();
 
+            var transfers = a.IsSystemAdmin ? db.Transfers : db.Transfers.Where(t => a.Warehouses.Contains(t.SourceWarehouseId) || a.Warehouses.Contains(t.TargetWarehouseId));
+            if (companyId is Guid cc) transfers = transfers.Where(t => t.CompanyId == cc);
+            var pending = await transfers.CountAsync(t => t.Status == TransferStatus.Sent);
+            var recentTransfers = await transfers.Where(t => t.SentAt != null).OrderByDescending(t => t.ReceivedAt ?? t.SentAt).Take(10)
+                .Select(t => new { t.No, t.Status, At = t.ReceivedAt ?? t.SentAt!.Value, Src = t.SourceWarehouse!.Name, Tgt = t.TargetWarehouse!.Name, By = t.ReceivedBy ?? t.SentBy ?? "" }).ToListAsync();
+            activity = activity.Concat(recentTransfers.Select(t => new ActivityRow(t.At, t.Status == TransferStatus.Received ? "Transfer teslim alındı" : "Transfer gönderildi", t.No, $"{t.Src} → {t.Tgt}", t.By)))
+                .OrderByDescending(x => x.At).Take(10).ToList();
+
             return new DashboardDto(byStatus.Sum(x => x.Count) - S(ItemStatus.Retired), S(ItemStatus.InStock), S(ItemStatus.Assigned), S(ItemStatus.InMaintenance),
-                S(ItemStatus.InTransit), S(ItemStatus.Retired), missingCount, oldest, breakdown, low, activity);
+                S(ItemStatus.InTransit), S(ItemStatus.Retired), missingCount, oldest, pending, breakdown, low, activity);
         });
     }
 }
