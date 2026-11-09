@@ -50,6 +50,9 @@ public sealed class FakeSnmpAgent : IDisposable
     }
 
     public void Set(string oid, ISnmpData v) => data[oid] = v;
+    public void Max(int supply, int max) => Set($"1.3.6.1.2.1.43.11.1.1.8.1.{supply}", new Integer32(max));
+    /// <summary>Kyocera bazı açıklamaları sonda NUL baytıyla gönderir.</summary>
+    public void RawDescription(int supply, byte[] raw) => Set($"1.3.6.1.2.1.43.11.1.1.6.1.{supply}", new OctetString(raw));
     public void Level(int supply, int level) => Set($"1.3.6.1.2.1.43.11.1.1.9.1.{supply}", new Integer32(level));
     public void Pages(long n) => Set("1.3.6.1.2.1.43.10.2.1.4.1.1", new Counter32((uint)n));
 
@@ -241,6 +244,72 @@ public class PrinterTests(TestApp app)
         Assert.Equal(HttpStatusCode.Forbidden, (await auditor.PutJson($"/api/printers/{p.Printer.Id}/supplies/renk_black/toner", new PrinterTonerMap(null, false))).StatusCode);
         // Aynı adres iki kez eklenemez.
         Assert.Equal(HttpStatusCode.Conflict, (await admin.PostJson("/api/printers", new PrinterSave(Wh("Ankara Merkez Depo"), "Kopya", "127.0.0.1", agent.Port, "v2c", agent.Community, null, 15, true))).StatusCode);
+    }
+
+    [Fact]
+    public async Task Kyocera_and_hp_supplies_are_read_and_toners_suggested_by_part_number()
+    {
+        // Kyocera ECOSYS renkli: seviye baskı birimiyle (max 4000/3000), açıklamada TK kodu, atık toner kutusu -3 ("var").
+        using var kyo = new FakeSnmpAgent(Community(), "ECOSYS M6230cidn", 86422,
+            ("TK-5240K", "black", 3, 400), ("TK-5240C", "cyan", 3, 2100), ("TK-5240M", "magenta", 3, 1500), ("TK-5240Y", "yellow", 3, 90), ("Waste Toner Box", "", 4, -3));
+        kyo.Set("1.3.6.1.2.1.1.1.0", new OctetString("KYOCERA Document Solutions Printing System"));
+        kyo.Max(1, 4000); kyo.Max(2, 3000); kyo.Max(3, 3000); kyo.Max(4, 3000); kyo.Max(5, -2);
+        kyo.RawDescription(1, [.. "TK-5240K"u8, 0]);
+        // HP siyah-beyaz: açıklamada parça numarası; orijinal olmayan kartuşta seviye -3.
+        using var hp = new FakeSnmpAgent(Community(), "HP LaserJet Pro M404dn", 127540, ("Black Cartridge HP CF259A", "black", 3, -3));
+
+        var admin = await app.Login("yonetici");
+        var k = await Add(admin, kyo);
+        Assert.Equal("ECOSYS M6230cidn", k.Printer.Model); // genel sysDescr yerine cihaz modeli
+        var s = k.Printer.Supplies.ToDictionary(x => x.Key);
+        Assert.Equal("TK-5240K", s["renk_black"].Description);
+        Assert.Equal((10, "low"), (s["renk_black"].Percent, s["renk_black"].State));
+        Assert.Equal((3, "low"), (s["renk_yellow"].Percent, s["renk_yellow"].State));
+        Assert.Equal(("Var", "Atık toner"), (s["4_waste_toner_box"].Level, s["4_waste_toner_box"].Type));
+        Assert.Equal("TK-5240K", s["renk_black"].PartNumber);
+
+        // Parça numarasına göre öneri: örnek veride TK-5240K/C/M/Y tonerleri var.
+        Assert.Contains("TK-5240K", s["renk_black"].SuggestedStockItemName);
+        Assert.Contains("TK-5240Y", s["renk_yellow"].SuggestedStockItemName);
+        Assert.Null(s["4_waste_toner_box"].SuggestedStockItemId);
+        var w = k.Printer.Warnings.First(x => x.SupplyKey == "renk_black");
+        Assert.Contains("Önerilen toner: Kyocera TK-5240K siyah toner", w.Message);
+
+        var h = await Add(admin, hp);
+        var hs = h.Printer.Supplies.Single();
+        Assert.Equal(("Var", "ok"), (hs.Level, hs.State));
+        Assert.Equal("CF259A", hs.PartNumber);
+        Assert.Contains("CF259A", hs.SuggestedStockItemName);
+
+        var applied = await (await admin.PostAsync($"/api/printers/apply-suggestions?printerId={k.Printer.Id}", null)).Read<JsonElement>();
+        Assert.Equal(4, applied.GetProperty("applied").GetInt32()); // dört toner; atık kutusu hariç
+        var after = await admin.GetJson<PrinterDetail>($"/api/printers/{k.Printer.Id}");
+        Assert.All(after.Printer.Supplies.Where(x => x.Type == "Toner"), x => Assert.NotNull(x.StockItemId));
+        Assert.Contains("Kullanılacak toner: Kyocera TK-5240K siyah toner (TNR-KYO-TK5240K)", after.Printer.Warnings.First(x => x.SupplyKey == "renk_black").Message);
+        Assert.Equal(0, (await (await admin.PostAsync($"/api/printers/apply-suggestions?printerId={k.Printer.Id}", null)).Read<JsonElement>()).GetProperty("applied").GetInt32());
+    }
+
+    [Fact]
+    public void Part_numbers_are_extracted_and_matched_only_when_unique()
+    {
+        Assert.Equal(["CF259A"], TonerParts.Extract("Black Cartridge HP CF259A"));
+        Assert.Equal(["W2030X"], TonerParts.Extract("Black Cartridge HP W2030X"));
+        Assert.Equal(["TK5240K"], TonerParts.Extract("TK-5240K"));
+        Assert.Equal(["TK1170"], TonerParts.Extract("TK 1170"));
+        Assert.Equal(["DK1150"], TonerParts.Extract("Drum DK-1150"));
+        Assert.Empty(TonerParts.Extract("Imaging Drum"));
+        Assert.Empty(TonerParts.Extract("Toner Collection Unit"));
+        Assert.Equal("TK-5240K", TonerParts.Display("TK-5240K"));
+
+        StockItem St(string name, string code) => new() { Id = Guid.NewGuid(), Name = name, Code = code };
+        var k = St("Kyocera TK-5240K siyah", "T1"); var c = St("Kyocera TK-5240C", "T2"); var generic = St("Kyocera toner", "TK-1170");
+        Assert.Equal(k, TonerParts.Suggest("TK-5240K", [k, c, generic]));
+        Assert.Equal(generic, TonerParts.Suggest("TK-1170", [k, c, generic]));            // koddan eşleşir
+        Assert.Null(TonerParts.Suggest("TK-11700", [generic]));                           // benzer ama farklı numara
+        Assert.Null(TonerParts.Suggest("TK-5240K", [St("A TK-5240K", "1"), St("B TK-5240K", "2")])); // iki aday: öneri yok
+        var set = St("TK-5240 toner seti", "S");
+        Assert.Equal(set, TonerParts.Suggest("TK-5240Y", [set]));                         // renk harfi olmadan tek aday
+        Assert.Null(TonerParts.Suggest("TK-5240Y", [set, St("TK-5240C", "x")]));          // renk harfsiz eşleşmede birden fazla aday
     }
 
     [Fact]

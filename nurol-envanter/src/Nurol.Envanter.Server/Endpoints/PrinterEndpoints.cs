@@ -138,6 +138,28 @@ public static class PrinterEndpoints
             return Results.Ok(new { updated = targets.Count });
         });
 
+        // Parça numarasından önerilen tonerleri, tonersiz yuvalara toplu olarak uygular (yalnızca tek eşleşme olan yuvalar).
+        api.MapPost("/printers/apply-suggestions", async (HttpContext ctx, AppDbContext db, PrinterMonitor m, Guid? printerId) =>
+        {
+            var a = await ctx.Access(); a.RequireWrite();
+            var q = PrinterMonitor.Scoped(db, a).AsNoTracking();
+            if (printerId is Guid pid) q = q.Where(p => p.Id == pid);
+            var rows = (await m.RowsAsync(a, q)).Where(r => r.CanManage).ToList();
+            var applied = 0;
+            foreach (var r in rows)
+                foreach (var s in r.Supplies.Where(s => s.StockItemId is null && s.SuggestedStockItemId is not null))
+                {
+                    db.PrinterSupplyMaps.Add(new PrinterSupplyMap { Id = Guid.NewGuid(), PrinterId = r.Id, SupplyKey = s.Key, StockItemId = s.SuggestedStockItemId!.Value });
+                    applied++;
+                }
+            if (applied > 0)
+            {
+                Audit.Add(db, a, "Toner önerilerini uygulama", "Yazıcı", printerId, $"{applied} yuva");
+                await db.SaveChangesAsync();
+            }
+            return Results.Ok(new { applied });
+        });
+
         api.MapPost("/printers/{id:guid}/supplies/{key}/replace", async (Guid id, string key, PrinterReplace req, HttpContext ctx, AppDbContext db, PrinterMonitor m) =>
         {
             var a = await ctx.Access();

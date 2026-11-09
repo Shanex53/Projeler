@@ -65,6 +65,15 @@ else
                                             <option value="">Seçilmedi</option>
                                             @foreach (var t in toners) { <option value="@t.Id">@t.Name (@t.Code)</option> }
                                         </select>
+                                        @if (s.StockItemId is null && s.SuggestedStockItemId is Guid sug)
+                                        {
+                                            <span class="sub" style="margin-top:4px">Öneri (@s.PartNumber): <b>@s.SuggestedStockItemName</b>
+                                                <button class="btn sm link" @onclick="() => Map(key, sug)">Uygula</button></span>
+                                        }
+                                        else if (s.StockItemId is null && s.PartNumber is not null)
+                                        {
+                                            <span class="sub" style="margin-top:4px">Yazıcının bildirdiği parça: <span class="mono">@s.PartNumber</span> · stokta eşleşen malzeme yok</span>
+                                        }
                                     }
                                     else if (s.StockItemName is not null) { @s.StockItemName <span class="sub mono">@s.StockItemCode</span> }
                                     else { <span class="muted">—</span> }

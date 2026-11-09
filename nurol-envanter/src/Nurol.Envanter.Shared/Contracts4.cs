@@ -3,7 +3,8 @@ namespace Nurol.Envanter.Shared;
 // ---- Yazıcı izleme (SNMP) ----
 /// <summary>State: ok, low, empty, unknown. Key: yuvanın kalıcı anahtarı (renk veya açıklama); toner eşlemesi bu anahtara yapılır.</summary>
 public record PrinterSupplyDto(string Key, int Index, string Description, string? Color, string Type, int? Percent, string Level, string State, bool Monitored,
-    Guid? StockItemId, string? StockItemName, string? StockItemCode, decimal? StockInWarehouse, decimal? StockTotal, bool PendingReplacement);
+    Guid? StockItemId, string? StockItemName, string? StockItemCode, decimal? StockInWarehouse, decimal? StockTotal, bool PendingReplacement,
+    string? PartNumber = null, Guid? SuggestedStockItemId = null, string? SuggestedStockItemName = null);
 
 /// <summary>Severity: Kritik (bitti veya çok az) / Uyarı (eşik altında).</summary>
 public record PrinterWarning(Guid PrinterId, string PrinterName, string? Location, string SupplyKey, string Supply, int? Percent, string Severity, string Message,

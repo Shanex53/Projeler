@@ -143,6 +143,13 @@ public static class DevSeeder
         var klv = St(ins, "SRF-KLV-003", "USB klavye (TR-Q)", "adet", 20);
         var mou = St(ins, "SRF-MOU-003", "Kablosuz mouse", "adet", 15);
         var sim = St(ins, "SRF-SIM-001", "Data hattı SIM kart", "adet", 10);
+        // Yazıcı tonerleri: Kyocera ve HP parça numaralarıyla (yazıcı izlemede otomatik öneri için).
+        var tk1170 = St(ins, "TNR-KYO-TK1170", "Kyocera TK-1170 toner", "adet", 4);
+        var tk5240k = St(ins, "TNR-KYO-TK5240K", "Kyocera TK-5240K siyah toner", "adet", 3);
+        St(ins, "TNR-KYO-TK5240C", "Kyocera TK-5240C camgöbeği toner", "adet", 2);
+        St(ins, "TNR-KYO-TK5240M", "Kyocera TK-5240M macenta toner", "adet", 2);
+        St(ins, "TNR-KYO-TK5240Y", "Kyocera TK-5240Y sarı toner", "adet", 2);
+        var cf259 = St(ins, "TNR-HP-CF259A", "HP 59A toner CF259A", "adet", 3);
         await db.SaveChangesAsync();
         async Task Mv(StockItem s, Warehouse w, StockMovementType t, decimal q, Guid? emp = null, string? project = null, string? note = null) =>
             await StockEndpoints.Move(db, sys, new StockMovementRequest(s.Id, w.Id, t, q, emp, project, note), null);
@@ -159,6 +166,9 @@ public static class DevSeeder
         await Mv(mou, ist, StockMovementType.In, 6, note: "Açılış bakiyesi");
         await Mv(sim, ank, StockMovementType.In, 14, note: "Açılış bakiyesi");
         await Mv(sim, ist, StockMovementType.In, 3, note: "Açılış bakiyesi");
+        await Mv(tk1170, ank, StockMovementType.In, 6, note: "Açılış bakiyesi");
+        await Mv(tk5240k, ank, StockMovementType.In, 2, note: "Açılış bakiyesi");
+        await Mv(cf259, glb, StockMovementType.In, 1, note: "Açılış bakiyesi");
 
         // Gölbaşı'ndan Ankara'ya gönderilmiş, teslim alınmayı bekleyen örnek transfer.
         var sw = await db.Items.FirstAsync(x => x.Serial == "FOC2741Y0QS");

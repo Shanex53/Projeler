@@ -34,6 +34,7 @@ Bu klasör sıfırdan başlatılan yeni projedir; depodaki diğer dosyalarla ba�
 - Ağ yazıcıları IP adresiyle eklenir (envanterden bağımsız); SNMP ile toner seviyeleri ve sayfa sayacı canlı okunur
 - Her toner yuvasına stoktaki tonerin bağlanması; azalan/biten tonerde “şu toneri kullanın, şu depoda bu kadar var” uyarısı ve e-posta
 - Toner değişimi algılama ve tek tıkla stoktan düşme, toner ihtiyacı tablosu, günlük baskı ve yazıcı sayaçları raporu
+- Kyocera ve HP yazıcıların bildirdiği parça numarasından (TK-1170, CF259A…) stoktaki tonerin otomatik önerilmesi ve toplu atanması
 
 Ayrıntılar: [tasarım](docs/tasarim.md), [Aşama 1 planı](docs/plan-asama-1.md), [Aşama 2 notları](docs/asama-2.md), [Aşama 3 notları](docs/asama-3.md).
 

@@ -83,6 +83,7 @@ public class PrinterMonitor(AppDbContext db, IPrinterProbe probe, PrinterOptions
 
         var states = await db.PrinterSupplyStates.Where(s => s.PrinterId == p.Id).ToDictionaryAsync(s => s.SupplyKey, ct);
         var maps = await db.PrinterSupplyMaps.Where(m => m.PrinterId == p.Id).Include(m => m.StockItem).ToDictionaryAsync(m => m.SupplyKey, ct);
+        var companyStock = await db.StockItems.Where(x => x.CompanyId == p.CompanyId && !x.Archived).ToListAsync(ct);
         foreach (var s in stored.Where(s => Monitored(s.TypeCode)))
         {
             var (pct, _, state) = Interpret(s, p.LowThreshold);
@@ -104,8 +105,10 @@ public class PrinterMonitor(AppDbContext db, IPrinterProbe probe, PrinterOptions
                 {
                     st.LowSince = now;
                     var map = maps.GetValueOrDefault(s.Key);
-                    var (inWh, total) = map is null ? (null, null) : await StockOf(map.StockItemId, p.WarehouseId, ct);
-                    var msg = WarningText(s, pct, state, map?.StockItem, inWh, total, p);
+                    var suggestion = map is null ? TonerParts.Suggest(s.Description, companyStock) : null;
+                    var shown = map?.StockItem ?? suggestion;
+                    var (inWh, total) = shown is null ? (null, null) : await StockOf(shown.Id, p.WarehouseId, ct);
+                    var msg = WarningText(s, pct, state, map?.StockItem, inWh, total, p, suggestion);
                     Event(p, state == "empty" ? "Sarf bitti" : "Sarf azaldı", msg, userName);
                     await notifier.SupplyLowAsync(p, s.Description, pct, state, msg, $"supply-low:{p.Id}:{s.Key}:{now:yyyyMMddHHmmss}");
                 }
@@ -122,18 +125,23 @@ public class PrinterMonitor(AppDbContext db, IPrinterProbe probe, PrinterOptions
     }
 
     /// <summary>“Siyah toner %8. Kullanılacak toner: HP 151A (SRF-TNR-014) — Ankara Merkez Depo'da 4 adet.”</summary>
-    public static string WarningText(StoredSupply s, int? pct, string state, StockItem? toner, decimal? inWh, decimal? total, Printer p)
+    public static string WarningText(StoredSupply s, int? pct, string state, StockItem? toner, decimal? inWh, decimal? total, Printer p, StockItem? suggestion = null)
     {
         var what = s.TypeCode == 4
             ? (state == "empty" ? $"{s.Description} dolu" : $"{s.Description} dolmak üzere (kalan kapasite %{pct})")
             : state == "empty" ? $"{s.Description} bitti" : $"{s.Description} %{pct}";
         if (s.TypeCode == 4) return what + ". Atık toner kutusunu değiştirin.";
-        if (toner is null) return what + ". Bu yuva için kullanılacak toner tanımlanmamış; yazıcı sayfasından seçin.";
-        var unit = toner.Unit;
+        var part = TonerParts.Display(s.Description);
+        if (toner is null && suggestion is null)
+            return what + ". Bu yuva için kullanılacak toner tanımlanmamış" + (part is null ? "" : $" (yazıcının bildirdiği parça: {part}; stokta eşleşen malzeme yok)") + "; yazıcı sayfasından seçin.";
+        var t = toner ?? suggestion!;
+        var unit = t.Unit;
         var stock = inWh > 0
             ? $"{p.Warehouse?.Name ?? "depoda"}: {inWh.Value.ToString("#,##0.###", Tr)} {unit}"
             : total > 0 ? $"bu depoda yok, diğer depolarda toplam {total.Value.ToString("#,##0.###", Tr)} {unit}" : "stokta yok";
-        return $"{what}. Kullanılacak toner: {toner.Name} ({toner.Code}) — {stock}.";
+        return toner is not null
+            ? $"{what}. Kullanılacak toner: {t.Name} ({t.Code}) — {stock}."
+            : $"{what}. Önerilen toner: {t.Name} ({t.Code}), yazıcının bildirdiği {part} parçasına göre — {stock}. Yazıcı sayfasından onaylayın.";
     }
 
     void Event(Printer p, string type, string text, string user) =>
@@ -157,7 +165,9 @@ public class PrinterMonitor(AppDbContext db, IPrinterProbe probe, PrinterOptions
         var ids = printers.Select(p => p.Id).ToList();
         var maps = await db.PrinterSupplyMaps.Where(m => ids.Contains(m.PrinterId)).Include(m => m.StockItem).ToListAsync(ct);
         var states = await db.PrinterSupplyStates.Where(s => ids.Contains(s.PrinterId)).ToListAsync(ct);
-        var stockIds = maps.Select(m => m.StockItemId).Distinct().ToList();
+        var companyIds = printers.Select(p => p.CompanyId).Distinct().ToList();
+        var stockByCompany = (await db.StockItems.Where(s => companyIds.Contains(s.CompanyId) && !s.Archived).ToListAsync(ct)).ToLookup(s => s.CompanyId);
+        var stockIds = maps.Select(m => m.StockItemId).Concat(stockByCompany.SelectMany(g => g).Select(s => s.Id)).Distinct().ToList();
         var balances = await db.StockBalances.Where(b => stockIds.Contains(b.StockItemId)).ToListAsync(ct);
         return printers.Select(p =>
         {
@@ -167,14 +177,18 @@ public class PrinterMonitor(AppDbContext db, IPrinterProbe probe, PrinterOptions
             {
                 var (pct, level, state) = Interpret(s, p.LowThreshold);
                 var map = maps.FirstOrDefault(m => m.PrinterId == p.Id && m.SupplyKey == s.Key);
-                decimal? inWh = map is null ? null : balances.FirstOrDefault(b => b.StockItemId == map.StockItemId && b.WarehouseId == p.WarehouseId)?.Quantity ?? 0;
-                decimal? total = map is null ? null : balances.Where(b => b.StockItemId == map.StockItemId).Sum(b => b.Quantity);
+                var suggestion = map is null && Monitored(s.TypeCode) && s.TypeCode != 4 ? TonerParts.Suggest(s.Description, stockByCompany[p.CompanyId]) : null;
+                var shownId = map?.StockItemId ?? suggestion?.Id;
+                decimal? inWh = shownId is null ? null : balances.FirstOrDefault(b => b.StockItemId == shownId && b.WarehouseId == p.WarehouseId)?.Quantity ?? 0;
+                decimal? total = shownId is null ? null : balances.Where(b => b.StockItemId == shownId).Sum(b => b.Quantity);
                 var pending = states.FirstOrDefault(x => x.PrinterId == p.Id && x.SupplyKey == s.Key)?.PendingReplacement == true;
                 supplies.Add(new PrinterSupplyDto(s.Key, s.Index, s.Description, s.Color, TypeLabel(s.TypeCode), pct, level, state, Monitored(s.TypeCode),
-                    map?.StockItemId, map?.StockItem?.Name, map?.StockItem?.Code, inWh, total, pending));
+                    map?.StockItemId, map?.StockItem?.Name, map?.StockItem?.Code, map is null ? null : inWh, map is null ? null : total, pending,
+                    TonerParts.Display(s.Description), suggestion?.Id, suggestion is null ? null : $"{suggestion.Name} ({suggestion.Code})"));
                 if (Monitored(s.TypeCode) && state is "low" or "empty" && p.IsActive)
                     warnings.Add(new PrinterWarning(p.Id, p.Name, p.Location, s.Key, s.Description, pct, state == "empty" || pct <= 5 ? "Kritik" : "Uyarı",
-                        WarningText(s, pct, state, map?.StockItem, inWh, total, p), map?.StockItemId, map?.StockItem?.Name, inWh, total));
+                        WarningText(s, pct, state, map?.StockItem, inWh, total, p, suggestion), map?.StockItemId ?? suggestion?.Id,
+                        map?.StockItem?.Name ?? suggestion?.Name, inWh, total));
             }
             return new PrinterListRow(p.Id, p.Name, p.Host, p.Location, p.WarehouseId, p.Warehouse!.Name, p.Model, p.IsActive, p.Online, p.LastPolledAt,
                 p.LastSuccessAt, p.LastError, p.PageCount, supplies, warnings, a.CanWriteWarehouse(p.WarehouseId));

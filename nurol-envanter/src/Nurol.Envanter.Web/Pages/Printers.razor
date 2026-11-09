@@ -8,6 +8,10 @@
 <PageTitle>Yazıcılar · Nurol Envanter</PageTitle>
 <div class="head">
     <div class="t"><h1>Yazıcılar</h1><p>Ağ yazıcılarının toner seviyeleri ve sayaçları SNMP ile okunur. Toner azalınca hangi tonerin kullanılacağı ve stok durumu gösterilir.</p></div>
+    @if (Session.CanWrite && SuggestionCount > 0)
+    {
+        <button class="btn" title="Yazıcının bildirdiği parça numarası (ör. TK-1170, CF259A) stokta tek bir tonerle eşleşen yuvalar" @onclick="ApplySuggestions">Toner önerilerini uygula (@SuggestionCount)</button>
+    }
     @if (Session.CanWrite) { <button class="btn pri" @onclick="() => adding = true">+ Yazıcı ekle</button> }
 </div>
 
@@ -124,6 +128,18 @@ else
     bool adding;
     ApiException? error;
     Timer? timer;
+    int SuggestionCount => rows?.Where(r => r.CanManage).Sum(r => r.Supplies.Count(s => s.StockItemId is null && s.SuggestedStockItemId is not null)) ?? 0;
+
+    async Task ApplySuggestions()
+    {
+        try
+        {
+            var r = await Api.Post<System.Text.Json.JsonElement>("api/printers/apply-suggestions", null);
+            Toasts.Show($"{r.GetProperty("applied").GetInt32()} yuvaya toner atandı");
+            await Load();
+        }
+        catch (ApiException ex) { error = ex; }
+    }
 
     protected override async Task OnInitializedAsync()
     {
