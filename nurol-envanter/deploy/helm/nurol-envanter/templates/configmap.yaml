@@ -43,6 +43,17 @@ data:
   Directory__MinFoundRatio: {{ .minFoundRatio | quote }}
   Directory__ScheduleNote: {{ if .schedule.enabled }}{{ .schedule.note | quote }}{{ else }}""{{ end }}
   {{- end }}
+  {{- with .Values.smtp }}
+  Smtp__Enabled: {{ .enabled | quote }}
+  Smtp__Host: {{ .host | quote }}
+  Smtp__Port: {{ .port | quote }}
+  Smtp__Security: {{ .security | quote }}
+  Smtp__UserName: {{ .userName | quote }}
+  Smtp__From: {{ .from | quote }}
+  Smtp__FromName: {{ .fromName | quote }}
+  Smtp__MissingDocDays: {{ .missingDocDays | quote }}
+  {{- end }}
+  Smtp__BaseUrl: {{ .Values.smtp.baseUrl | default (ternary (printf "http%s://%s" (ternary "s" "" .Values.ingress.tls.enabled) .Values.ingress.host) "" .Values.ingress.enabled) | quote }}
   {{- range $k, $v := .Values.config.extraEnv }}
   {{ $k }}: {{ $v | quote }}
   {{- end }}

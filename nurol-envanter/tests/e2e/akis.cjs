@@ -2,7 +2,8 @@
 //   docker compose -f deploy/docker-compose.yml up -d
 //   NE_URL=http://localhost:8080 node tests/e2e/akis.cjs
 // Kapsam: giriş, özel alan ekleme, sütun tercihinin kalıcılığı, kayıtlı görünüm, zimmet, PDF indirme, imzalı evrak yükleme,
-// stokta bakiyeden fazla çıkışın reddi, depolar arası transfer (gönderme ve teslim alma).
+// stokta bakiyeden fazla çıkışın reddi, depolar arası transfer (gönderme ve teslim alma), rapor ve Excel çıktısı,
+// QR etiket PDF'i, kod okutma ile cihaza gitme.
 const { chromium } = require('playwright');
 const fs = require('fs');
 const os = require('os');
@@ -154,6 +155,38 @@ const check = (cond, msg) => { if (!cond) throw new Error(`${step}: ${msg}`); co
     await page.click('.modal button:has-text("Teslim aldım")');
     await page.waitForSelector('.steps span.done:has-text("Teslim alındı")');
     check(true, 'hedef depoda teslim alındı');
+
+    step = 'Rapor';
+    console.log(step);
+    await page.goto(base + 'raporlar?r=eksik-evrak');
+    await page.waitForSelector('h2:has-text("Eksik imzalı evrak")');
+    await page.waitForSelector('table tbody tr');
+    const [xl] = await Promise.all([page.waitForEvent('download'), page.click('a:has-text("Excel indir")')]);
+    const xlPath = path.join(tmp, 'rapor.xlsx');
+    await xl.saveAs(xlPath);
+    check(fs.readFileSync(xlPath).subarray(0, 2).toString() === 'PK', 'rapor Excel (.xlsx) olarak indirildi');
+
+    step = 'Etiket';
+    console.log(step);
+    await page.goto(base + 'envanter');
+    await page.waitForSelector('tbody tr.click');
+    await page.locator('tbody tr.click').first().click();
+    await page.waitForSelector('button:has-text("Etiket")');
+    const tag = (await page.textContent('h1')).trim();
+    await page.click('button:has-text("Etiket")');
+    const [lbl] = await Promise.all([page.waitForEvent('download'), page.click('.modal a:has-text("PDF oluştur")')]);
+    const lblPath = path.join(tmp, 'etiket.pdf');
+    await lbl.saveAs(lblPath);
+    check(fs.readFileSync(lblPath).subarray(0, 4).toString() === '%PDF', `${tag} için QR etiket PDF'i indirildi`);
+
+    step = 'Kod okut';
+    console.log(step);
+    await page.goto(base + 'okut');
+    await page.fill('#scan-code', tag.toLowerCase());
+    await page.press('#scan-code', 'Enter');
+    await page.waitForURL(/envanter\/[0-9a-f-]{36}$/);
+    await page.waitForSelector('h1');
+    check((await page.textContent('h1')).trim() === tag, 'okutulan etiket cihaz sayfasını açtı');
 
     check(errors.length === 0, 'tarayıcıda yakalanmamış hata yok' + (errors.length ? ': ' + errors.join(' | ') : ''));
     console.log('\nTüm adımlar başarılı.');

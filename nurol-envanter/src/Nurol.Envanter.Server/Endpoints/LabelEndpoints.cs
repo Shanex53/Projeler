@@ -132,8 +132,9 @@ public static class LabelEndpoints
         var row = inner.AddRow();
         row.TopPadding = Unit.FromMillimeter(3);
         using var data = gen.CreateQrCode(d.Tag, QRCodeGenerator.ECCLevel.M);
-        var png = new PngByteQRCode(data).GetGraphic(10);
-        var img = row.Cells[0].AddImage("base64:" + Convert.ToBase64String(png));
+        // PDFsharp'ın platformdan bağımsız sürümü QRCoder'ın PNG çıktısını okuyamıyor; BMP kullanılır.
+        var bmp = new BitmapByteQRCode(data).GetGraphic(8);
+        var img = row.Cells[0].AddImage("base64:" + Convert.ToBase64String(bmp));
         img.Width = Unit.FromMillimeter(qrSize);
         img.Height = Unit.FromMillimeter(qrSize);
         img.Left = Unit.FromMillimeter(2.5);

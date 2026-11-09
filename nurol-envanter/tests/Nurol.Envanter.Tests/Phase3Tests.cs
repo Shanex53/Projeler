@@ -163,7 +163,16 @@ public class Phase3Tests(TestApp app)
 
         var one = await admin.GetAsync($"/api/labels?ids={ids[0]}");
         Assert.Equal("application/pdf", one.Content.Headers.ContentType!.MediaType);
-        Assert.Equal(1, Pages(await one.Content.ReadAsByteArrayAsync()));
+        var onePdf = await one.Content.ReadAsByteArrayAsync();
+        Assert.Equal(1, Pages(onePdf));
+        // QR görseli gerçekten gömülmüş olmalı (desteklenmeyen biçimde PDFsharp yer tutucu metin basar).
+        using (var d = PdfReader.Open(new MemoryStream(onePdf), PdfDocumentOpenMode.Import))
+        {
+            var xobjects = d.Pages[0].Resources.Elements.GetDictionary("/XObject");
+            Assert.NotNull(xobjects);
+            Assert.Contains(xobjects.Elements.Values, v => (v as PdfSharp.Pdf.Advanced.PdfReference)?.Value is PdfSharp.Pdf.PdfDictionary x && x.Elements.GetName("/Subtype") == "/Image");
+        }
+        Assert.DoesNotContain("valid type", System.Text.Encoding.Latin1.GetString(onePdf));
         // 3x8 kâğıtta 22. konumdan başlayan 5 etiket iki sayfaya taşar.
         Assert.Equal(2, Pages(await admin.GetByteArrayAsync($"/api/labels?ids={string.Join(',', ids)}&layout=a4-3x8&start=22")));
         Assert.Equal(1, Pages(await admin.GetByteArrayAsync($"/api/labels?ids={string.Join(',', ids)}&layout=a4-2x7&start=1")));

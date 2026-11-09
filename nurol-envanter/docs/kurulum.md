@@ -13,6 +13,8 @@ Kubernetes Secret ve Helm values dosyasıyla verilir.
 | Nesne deposu | S3 uyumlu özel depo (kurumsal S3, MinIO vb.). İmzalı evraklar ve üretilen tutanaklar burada tutulur. |
 | Migration Job | Aynı imaj `migrate` argümanıyla çalışır; şemayı günceller ve ilk yöneticiyi oluşturur. |
 | AD eşitleme CronJob'u | Aynı imaj `ad-sync` argümanıyla çalışır (isteğe bağlı). |
+| Günlük özet CronJob'u | Aynı imaj `bildirim-ozet` argümanıyla çalışır (isteğe bağlı). |
+| SMTP | E-posta bildirimleri için kurum SMTP sunucusu (isteğe bağlı). |
 | Active Directory | LDAPS ile salt okunur servis hesabı. Personel eşitlemesi ve AD ile giriş ayrı ayrı açılır. |
 
 Redis veya başka bir ara katman gerekmez. Oturumlar, cookie şifreleme anahtarları ve giriş kilitleri PostgreSQL'de
@@ -96,7 +98,8 @@ kubectl -n envanter create secret generic nurol-envanter-gizli \
   --from-file=Storage__AccessKey=./s3-erisim.txt \
   --from-file=Storage__SecretKey=./s3-gizli.txt \
   --from-file=Bootstrap__AdminPassword=./ilk-yonetici-parolasi.txt \
-  --from-file=Directory__BindPassword=./ad-servis-parolasi.txt   # AD kullanılmayacaksa bu satırı çıkarın
+  --from-file=Directory__BindPassword=./ad-servis-parolasi.txt \  # AD kullanılmayacaksa bu satırı çıkarın
+  --from-file=Smtp__Password=./smtp-parolasi.txt                 # kimlik doğrulamasız SMTP'de bu satırı çıkarın
 
 # İsteğe bağlı: kurum CA sertifikası
 kubectl -n envanter create configmap kurum-ca --from-file=ca.crt=./kurum-ca.pem
@@ -145,6 +148,7 @@ curl http://localhost:8080/healthz/ready
 - Migration'lar PostgreSQL advisory lock ile korunur; aynı anda iki Job çalışsa da tek kez uygulanır.
 
 - `directory.schedule.enabled` açıksa AD eşitleme CronJob'u (`concurrencyPolicy: Forbid`; ayrıca veritabanı kilidi).
+- `smtp.digest.enabled` açıksa günlük özet CronJob'u.
 
 ### 5.5 Yükseltme ve geri alma
 
@@ -202,7 +206,34 @@ Girişte kullanıcı adı `ad.soyad`, `NUROL\ad.soyad` veya `ad.soyad@nurol.loca
 - AD kimliği, yetkinin verildiği kimlikle aynı olmalıdır. Aynı kullanıcı adıyla sonradan açılan başka bir AD hesabı yetkiyi devralamaz.
 - Parola AD'de doğrulanır. Başarısız doğrulama yerel parolaya düşmez. AD'ye ulaşılamazsa giriş yapılamaz (yerel yönetici hesabı her zaman kullanılabilir).
 
-## 7. Yedekleme ve geri yükleme
+## 7. E-posta bildirimleri
+
+`values` dosyasındaki `smtp` bölümüyle açılır; parola Secret'taki `Smtp__Password` anahtarındadır.
+
+| Bildirim | Alıcı | Zaman |
+|---|---|---|
+| Transfer yolda | Hedef depoda yazma yetkisi olan depo sorumluları ve şirket yöneticileri | Transfer gönderildiğinde |
+| Günlük özet | Her kullanıcıya kendi kapsamı için: teslim almasını bekleyen transferler, imzalı evrakı `missingDocDays` günden uzun süredir eksik tutanaklar, kritik stok, açık zimmeti kalan pasif personel. Bildirecek kayıt yoksa gönderilmez. | `smtp.digest.cron` (varsayılan hafta içi 07:30) |
+| AD'den ayrılan | Sistem yöneticileri | AD eşitlemesi açık zimmetli personeli pasife aldığında |
+
+İşleyiş:
+
+- Bildirimler, onları doğuran işlemle aynı veritabanı işleminde bir gönderim kuyruğuna (`outbox_mails`) yazılır. İşlem geri alınırsa e-posta da oluşmaz.
+- Uygulama pod'ları kuyruğu `smtp.enabled` açıkken gönderir. Birden fazla pod aynı e-postayı göndermez. Başarısız gönderimler artan aralıklarla 8 kez denenir; durum **Yönetim → Bildirimler** sekmesinde görünür ve elle tekrar denenebilir.
+- Günlük özet aynı gün ikinci kez çalışsa da kişi başına tek e-posta üretilir.
+- Kullanıcılar e-posta adreslerini ve bildirim tercihlerini **Hesabım** sayfasından yönetir. AD hesabı açılırken e-posta adresi AD'deki `mail` değerinden alınır.
+- E-postalardaki bağlantılar `smtp.baseUrl` (boşsa ingress adresi) ile oluşturulur.
+
+İlk kurulumdan sonra **Yönetim → Bildirimler → Kendime test e-postası gönder** ile SMTP ayarlarını doğrulayın.
+
+## 8. Raporlar, etiketler ve toplu ekleme
+
+- **Raporlar:** personel bazlı zimmet, eksik imzalı evrak, sarf tüketimi, envanter değeri, ayrılan personel, hareket dökümü. Hepsi kullanıcının kapsamıyla süzülür ve Excel (.xlsx) olarak indirilebilir. Tarih aralığı en fazla bir yıldır.
+- **QR etiketler:** envanter listesinden (filtreye uyan en fazla 1000 kayıt) veya cihaz sayfasından A4 etiket kâğıdına PDF. İki düzen vardır: 3×8 (70×37 mm) ve 2×7 (99×38 mm). Kısmen kullanılmış kâğıt için başlangıç konumu seçilebilir. QR yalnızca envanter etiketini içerir; sunucu adresi değişse de etiketler geçerli kalır. Yazdırırken ölçek %100 olmalıdır.
+- **Kod okutma:** **Kod okut** sayfası ve üst arama kutusu etiket, seri no veya benzersiz özel alan (ör. IMEI) ile cihazı bulur. USB/Bluetooth el tipi okuyucular klavye gibi çalışır. Kamerayla okuma, tarayıcının yerleşik barkod okuyucusunu destekleyen tarayıcılarda (Android'de Chrome/Edge) çalışır; kamera için sayfa HTTPS üzerinden açılmalıdır.
+- **Excel ile toplu ekleme:** kategoriye özel şablon (açılır model, depo ve seçenek listeleriyle) indirilir, doldurulup yüklenir. Dosya önce satır satır kontrol edilir (model, depo yetkisi, lokasyon, seri no ve benzersiz alanların hem veritabanında hem dosya içinde tekrarı, alan kuralları). Hata varsa hiçbir satır kaydedilmez. Hatasızsa önizleme gösterilir ve onayla tüm satırlar tek işlemde eklenir. Personel için de aynı akış vardır (AD kullanılmayan personel için).
+
+## 9. Yedekleme ve geri yükleme
 
 Veritabanı ve nesne deposu **birlikte** yedeklenmelidir. Tutanak kayıtları veritabanında, dosyaları nesne deposundadır.
 
@@ -217,7 +248,7 @@ Evrak dosyaları yüklendikten sonra değiştirilmez; her sürüm ayrı bir nesn
 
 Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumun yedekleme altyapısına göre belirlenmelidir.
 
-## 8. Güvenlik notları
+## 10. Güvenlik notları
 
 - Oturum cookie'si HttpOnly, SameSite=Strict ve üretimde Secure'dür. Uygulama HTTPS arkasında (ingress TLS) çalışmalıdır.
 - Durum değiştiren tüm API isteklerinde özel bir başlık zorunludur (CSRF koruması); uygulama CORS açmaz.
@@ -226,7 +257,7 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 - Kullanıcı devre dışı bırakıldığında, rolü veya parolası değiştiğinde açık oturumları sunucudan hemen iptal edilir.
 - Yüklenen dosyaların türü uzantıdan değil içerikten belirlenir (PDF/JPEG/PNG); en fazla 20 MB.
 
-## 9. Sorun giderme
+## 11. Sorun giderme
 
 | Belirti | Olası neden |
 |---|---|
@@ -238,17 +269,22 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 | AD testi: “servis hesabı bilgileri reddedildi” | `bindDn` veya Secret'taki `Directory__BindPassword` hatalı. |
 | AD testi: “sunucuya ulaşılamadı” | Ağ erişimi (636), sunucu adı veya kurum CA (`corporateCa`, `LDAPTLS_CACERT`). |
 | Eşitlemede çok sayıda “Eşleşmeyen” | Şirket eşleme kuralı eksik; AD'deki şirket/birim değerlerini raporda görüp kural ekleyin. |
+| E-postalar “Sırada” kalıyor | `smtp.enabled` kapalı veya SMTP sunucusuna ulaşılamıyor; Bildirimler sekmesindeki hata metnine bakın. |
+| E-postalardaki bağlantı yanlış adrese gidiyor | `smtp.baseUrl` değerini uygulamanın dış adresiyle doldurun. |
+| Etiketler kâğıda kayık basılıyor | Yazdırmada ölçek %100 (gerçek boyut) değil; ya da kâğıt düzeni seçilen şablona uymuyor. |
+| Kamera ile okutma görünmüyor | Tarayıcı yerleşik barkod okuyucuyu desteklemiyor veya sayfa HTTPS değil. El tipi okuyucu veya elle giriş kullanılabilir. |
 | AD kullanıcısı giriş yapamıyor | `loginEnabled` kapalı, uygulamada hesap açılmamış, hesap AD'de devre dışı veya AD kimliği değişmiş (hesabı yeniden açın). |
 
-## 10. Doğrulama durumu
+## 12. Doğrulama durumu
 
 **Bu teslimde test edilenler:**
 
-- 34 otomatik test. Aşama 1'e ek olarak: transfer akışı ve yetkileri (gönderme kaynak, teslim alma hedef depo yetkisi; transferdeki cihazın zimmetlenememesi; stok yetersizse gönderimin tamamen geri alınması; eşzamanlı gönderimde stokun tek kez düşmesi; şirketler arası transfer engeli), görünümlerin kişiye özel olması, AD eşitleme kuralları (yeniden adlandırmada mükerrer kayıt oluşmaması, başarısız veya şüpheli aramada toplu pasife alma yapılmaması, eşleşmeyen kişinin raporlanması) ve AD girişi (yerel parolaya düşmeme, dizine ulaşılamadığında reddetme, devre dışı hesabın oturumunun iptali, aynı kullanıcı adıyla yeni AD hesabının yetkiyi devralamaması).
+- 43 otomatik test. Aşama 3 için: raporların kapsama göre süzülmesi ve Excel çıktısı, değer raporu toplamı, Excel toplu eklemede hatalı dosyanın hiç kaydedilmemesi (geçersiz depo, dosya içi tekrar seri no ve IMEI, liste dışı seçenek, yetkisiz depo, tanınmayan sütun), IMEI'nin baştaki sıfırı ve sayı olarak girilmesi, personel içe aktarımında sicil kontrolü, etiket PDF'inin sayfa düzeni ve QR görselinin gerçekten gömülmesi, kod ile arama ve kapsam, transfer bildiriminin doğru alıcılara gitmesi, günlük özetin aynı gün tekrar üretilmemesi, gerçek SMTP sunucusuna (Mailpit) gönderim ve hata durumunda yeniden deneme, Hesabım ayarları.
+- Aşama 2 için: transfer akışı ve yetkileri (gönderme kaynak, teslim alma hedef depo yetkisi; transferdeki cihazın zimmetlenememesi; stok yetersizse gönderimin tamamen geri alınması; eşzamanlı gönderimde stokun tek kez düşmesi; şirketler arası transfer engeli), görünümlerin kişiye özel olması, AD eşitleme kuralları (yeniden adlandırmada mükerrer kayıt oluşmaması, başarısız veya şüpheli aramada toplu pasife alma yapılmaması, eşleşmeyen kişinin raporlanması) ve AD girişi (yerel parolaya düşmeme, dizine ulaşılamadığında reddetme, devre dışı hesabın oturumunun iptali, aynı kullanıcı adıyla yeni AD hesabının yetkiyi devralamaması).
 - LDAP istemcisi gerçek bir dizin sunucusuna (OpenLDAP) karşı test edildi: sayfalı arama, öznitelik eşlemesi, parola doğrulama, boş parolanın reddi, filtre enjeksiyonu. `ad-sync` komutu imaj içinde salt okunur dosya sistemiyle çalıştırıldı.
 - Ayrıca Aşama 1'deki 19 entegrasyon testi, gerçek PostgreSQL 17 üzerinde (Testcontainers). Kapsamları: rol ve depo kapsamı (liste, detay, CSV dışa aktarım, belge indirme), şirket bazlı zimmet kuralı, eşzamanlı çift zimmet engeli, tekrarlanan istek (idempotency), eşzamanlı stok çıkışlarında negatif bakiye engeli, IMEI kuralları (15 hane, baştaki sıfır, grup geneli benzersizlik), alan arşivleme ve değerlerin korunması, kural çakışma raporu, iyimser eşzamanlılık, PDF belgesinin sonradan değişmemesi, imzalı evrak sürümleme ve içerik türü denetimi, iki ayrı uygulama örneği arasında oturum paylaşımı ve hesap kapatılınca oturum iptali.
 - S3 uyumlu depoya (SeaweedFS) bayt bayt doğru yazma/okuma testi.
-- Tarayıcı akış testi (`tests/e2e/akis.cjs`): giriş, alan ekleme, sütun tercihi, kayıtlı görünüm, zimmet, PDF indirme, imzalı evrak yükleme, stok sınırı, transfer gönderme ve teslim alma. AD eşitleme önizlemesi, AD personeline hesap açma ve AD parolasıyla giriş ayrıca tarayıcıda denendi.
+- Tarayıcı akış testi (`tests/e2e/akis.cjs`): giriş, alan ekleme, sütun tercihi, kayıtlı görünüm, zimmet, PDF indirme, imzalı evrak yükleme, stok sınırı, transfer gönderme ve teslim alma, rapor Excel indirme, QR etiket PDF'i, kod okutma. Basılan etiketlerdeki QR kodları ayrıca bir QR çözücüyle (OpenCV) okunarak doğrulandı. Excel ile toplu eklemenin hata ekranı ve transfer/günlük özet e-postalarının SMTP üzerinden gelişi tarayıcı ve Mailpit ile denendi. AD eşitleme önizlemesi, AD personeline hesap açma ve AD parolasıyla giriş ayrıca tarayıcıda denendi.
 - İmajın salt okunur kök dosya sistemiyle ve root olmayan kullanıcıyla çalışması, `migrate` işinin şemayı kurup ilk yöneticiyi oluşturması, şema hazır olmadan hazırlık kontrolünün 503 dönmesi.
 - Docker Compose ortamının uçtan uca çalışması.
 - `helm lint` ve `helm template`; üretilen manifestoların Kubernetes 1.31 şemasına göre doğrulanması (kubeconform, katı mod).
@@ -258,6 +294,8 @@ Gerçek yedekleme sıklığı, saklama süresi ve felaket kurtarma planı kurumu
 - Helm chart'ın gerçek kümede kurulumu. Geliştirme ortamında yerel Kubernetes (kind) çalıştırılamadı; chart yalnızca şablon ve şema düzeyinde doğrulandı.
 - Kurumsal PostgreSQL'e TLS ile bağlantı (`SSL Mode=VerifyFull` ve kurum CA).
 - Kurumsal S3/MinIO servisiyle çalışma (adres, path-style erişim, CA).
+- Kurum SMTP sunucusu (port, TLS, kimlik doğrulama) ve e-postaların spam filtrelerinden geçmesi.
+- Etiketlerin kurumda kullanılacak etiket kâğıdı ve yazıcıyla hizası; kamerayla okutmanın sahadaki telefonlarda denenmesi.
 - Gerçek Windows Active Directory ile LDAPS bağlantısı: testler OpenLDAP üzerinde yapıldı. AD'ye özgü `objectGUID` (ikili GUID) ve `userAccountControl` (devre dışı biti) okuma kodu birim düzeyinde yazıldı ama gerçek AD'de doğrulanmadı. İlk kurulumda **Bağlantıyı test et** ve **Önizleme** ile kontrol edilmelidir.
 - Ingress denetleyicisinin gövde sınırı ve TLS ayarları.
 - Yedekleme ve geri yükleme prosedürünün kurum altyapısında denenmesi.

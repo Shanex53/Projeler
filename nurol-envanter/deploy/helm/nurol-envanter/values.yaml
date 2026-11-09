@@ -15,6 +15,7 @@ replicaCount: 2
 #   Storage__SecretKey           Nesne deposu gizli anahtarı
 #   Bootstrap__AdminPassword     İlk sistem yöneticisi parolası (yalnızca ilk kurulumda kullanılır)
 #   Directory__BindPassword      AD servis hesabı parolası (yalnızca directory kullanılıyorsa)
+#   Smtp__Password               SMTP parolası (yalnızca kimlik doğrulamalı SMTP kullanılıyorsa)
 existingSecret: nurol-envanter-gizli
 
 # Hassas olmayan ayarlar (ConfigMap'e yazılır).
@@ -63,6 +64,27 @@ directory:
     cron: "0 2 * * *"
     timeZone: Europe/Istanbul
     note: "Her gece 02:00"
+  resources:
+    requests: { cpu: 50m, memory: 192Mi }
+    limits: { memory: 512Mi }
+
+# E-posta bildirimleri. Kapalıyken bildirimler veritabanında sırada bekler, gönderilmez.
+smtp:
+  enabled: false
+  host: ""                   # ör. smtp.kurum.local
+  port: 587
+  security: StartTls         # StartTls, SslOnConnect veya None
+  userName: ""               # kimlik doğrulama yoksa boş; parola Secret'ta (Smtp__Password)
+  from: envanter@nurol.com.tr
+  fromName: Nurol Envanter
+  # E-postalardaki bağlantılar için uygulamanın dış adresi. Boşsa ingress.host kullanılır.
+  baseUrl: ""
+  missingDocDays: 3
+  # Günlük özet (CronJob): teslim alınmayı bekleyen transfer, eksik imzalı evrak, kritik stok, ayrılan personel.
+  digest:
+    enabled: false
+    cron: "30 7 * * 1-5"
+    timeZone: Europe/Istanbul
   resources:
     requests: { cpu: 50m, memory: 192Mi }
     limits: { memory: 512Mi }

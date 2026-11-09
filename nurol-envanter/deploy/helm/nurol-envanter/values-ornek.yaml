@@ -38,3 +38,13 @@ directory:
     enabled: true
     cron: "0 2 * * *"
     note: "Her gece 02:00"
+
+smtp:
+  enabled: true
+  host: smtp.kurum.local
+  port: 587
+  userName: envanter-bildirim
+  from: envanter@nurol.com.tr
+  digest:
+    enabled: true
+    cron: "30 7 * * 1-5"

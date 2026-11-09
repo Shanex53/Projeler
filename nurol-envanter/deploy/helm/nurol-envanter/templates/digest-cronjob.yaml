@@ -1,0 +1,47 @@
+{{- if .Values.smtp.digest.enabled }}
+# Günlük özet e-postaları: özetleri outbox'a yazar; gönderimi uygulama pod'ları yapar.
+# Aynı gün ikinci kez çalışsa da kişi başına tek özet üretilir.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "ne.fullname" . }}-gunluk-ozet
+  labels: {{- include "ne.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.smtp.digest.cron | quote }}
+  {{- with .Values.smtp.digest.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 900
+      template:
+        metadata:
+          labels:
+            {{- include "ne.selector" . | nindent 12 }}
+            app.kubernetes.io/component: gunluk-ozet
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets: {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext: {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: gunluk-ozet
+              image: {{ include "ne.image" . }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args: ["bildirim-ozet"]
+              envFrom: {{- include "ne.envFrom" . | nindent 16 }}
+              {{- with (include "ne.caEnv" .) }}
+              env: {{- . | nindent 16 }}
+              {{- end }}
+              resources: {{- toYaml .Values.smtp.resources | nindent 16 }}
+              securityContext: {{- toYaml .Values.securityContext | nindent 16 }}
+              volumeMounts: {{- include "ne.volumeMounts" . | nindent 16 }}
+          volumes: {{- include "ne.volumes" . | nindent 12 }}
+{{- end }}
